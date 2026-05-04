@@ -156,6 +156,7 @@ class Agent:
             finally:
                 self._waiting = False
             feedback_history.append({"iter": it, **feedback})
+            (workspace / "feedback.json").write_text(json.dumps(feedback_history))
             output_sync.sync_context_output(
                 context_id=ctx, workspace=workspace, phase="after_feedback", iteration=it
             )

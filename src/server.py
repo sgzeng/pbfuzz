@@ -16,7 +16,7 @@ from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 from executor import Executor
 
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
-_DEFAULT_A2A_MAX_CONTENT = 512 * 1024 * 1024
+_DEFAULT_A2A_MAX_CONTENT = 2 * 1024 * 1024 * 1024
 
 
 def _max_content_length() -> int | None:
