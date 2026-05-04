@@ -8,7 +8,7 @@
     properties: {
       card_url: {
         type: "string",
-        default: "http://cursor-cli-purple:9019/",
+        default: "http://0.0.0.0:9019/",
         description: "URL advertised in the Agent Card (how the green agent / scenario resolves this purple agent).",
       },
       cursor_auth: {
@@ -22,7 +22,7 @@
         description: "Optional. Passed to cursor-agent as --model (e.g. haiku-4.5).",
       },
     },
-    required: [],
+    required: ["cursor_auth"],
     additionalProperties: false,
   },
 
