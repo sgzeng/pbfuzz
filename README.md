@@ -20,7 +20,6 @@ flowchart LR
 | -------- | -------- | ----------- |
 | `HOME` | Docker only | Should be `/home/agent` so `cursor-agent` reads `~/.config/cursor/auth.json` under that home (the server can create this file from `CURSOR_AUTH`). |
 | `CURSOR_AUTH` | Docker / smoke | Standard base64 of `~/.config/cursor/auth.json` file bytes. The server decodes it at startup and writes `auth.json` under `HOME`. Alternative to bind-mounting the file. |
-| `CURSOR_API_KEY` | CI / headless without IDE login | Cursor Dashboard API key for `cursor-agent` when you **cannot** use `auth.json` or `CURSOR_AUTH`. |
 | `CURSOR_MODEL` | No | Passed as `--model` when set (e.g. `haiku-4.5`). |
 | `MAX_ITER` | No | Max cursor iterations per task (default `5`). |
 | `A2A_MAX_CONTENT_LENGTH` | No | Max JSON-RPC body size in bytes. Code default **2GiB**; compose defaults to **`0`** (unlimited) so level3 dual-tar payloads are accepted. |
