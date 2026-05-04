@@ -1,0 +1,75 @@
+{
+  manifest_version: "0.1.0",
+
+  // Deploy-time secrets and URLs for cursor-cli-purple (Cursor CLI + A2A bridge for CyberGym).
+  // Provide cursor_auth and/or cursor_api_key — cursor-agent needs one valid credential (see README).
+  config_schema: {
+    type: "object",
+    properties: {
+      card_url: {
+        type: "string",
+        description: "URL advertised in the Agent Card (how the green agent / scenario resolves this purple agent).",
+      },
+      cursor_auth: {
+        type: "string",
+        secret: true,
+        description: "Standard base64 of the host file ~/.config/cursor/auth.json (raw bytes). Server decodes and writes $HOME/.config/cursor/auth.json.",
+      },
+      cursor_api_key: {
+        type: "string",
+        secret: true,
+        description: "Optional. Cursor Dashboard API key when not using cursor_auth.",
+      },
+      cursor_model: {
+        type: "string",
+        description: "Optional. Passed to cursor-agent as --model (e.g. haiku-4.5).",
+      },
+    },
+    required: ["card_url"],
+    additionalProperties: false,
+  },
+
+  program: {
+    // Replace after publishing to GHCR (or use your registry namespace).
+    image: "ghcr.io/rdi-foundation/cursor-cli-purple:latest",
+    entrypoint: [
+      "uv",
+      "run",
+      "src/server.py",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "9019",
+      "--card-url",
+      "${config.card_url}",
+    ],
+
+    env: {
+      PYTHONUNBUFFERED: "1",
+      HOME: "/home/agent",
+      CURSOR_AUTH: "${config.cursor_auth}",
+      CURSOR_API_KEY: "${config.cursor_api_key}",
+      CURSOR_MODEL: "${config.cursor_model}",
+      // Match docker-compose: large A2A bodies; override in a fork if needed.
+      MAX_ITER: "5",
+      A2A_MAX_CONTENT_LENGTH: "0",
+      PURPLE_OUTPUT_HOST: "off",
+    },
+
+    network: {
+      endpoints: [{ name: "a2a_endpoint", port: 9019 }],
+    },
+  },
+
+  provides: {
+    a2a: { kind: "a2a", endpoint: "a2a_endpoint" },
+  },
+
+  exports: { a2a: "a2a" },
+
+  metadata: {
+    description: "Purple CyberGym agent: A2A bridge to cursor-agent for PoC generation; pairs with cybergym-green (green consumes slots.proxy → this a2a endpoint).",
+    authentication_note: "Set config.cursor_auth (base64 auth.json) and/or config.cursor_api_key so at least one credential is non-empty at runtime.",
+    participant_roles: ["agent"],
+  },
+}
