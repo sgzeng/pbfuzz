@@ -6,11 +6,6 @@
   config_schema: {
     type: "object",
     properties: {
-      card_url: {
-        type: "string",
-        default: "http://0.0.0.0:9019/",
-        description: "URL advertised in the Agent Card (how the green agent / scenario resolves this purple agent).",
-      },
       cursor_auth: {
         type: "string",
         secret: true,
@@ -37,8 +32,6 @@
       "0.0.0.0",
       "--port",
       "9019",
-      "--card-url",
-      "${config.card_url}",
     ],
 
     env: {
