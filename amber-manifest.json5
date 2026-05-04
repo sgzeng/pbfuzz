@@ -31,7 +31,7 @@
 
   program: {
     // Replace after publishing to GHCR (or use your registry namespace).
-    image: "ghcr.io/rdi-foundation/cursor-cli-purple:latest",
+    image: "ghcr.io/sgzeng/cursor-cli-purple-cursor-cli-purple:latest",
     entrypoint: [
       "uv",
       "run",
