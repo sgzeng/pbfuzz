@@ -40,10 +40,13 @@ services:
       CURSOR_MODEL: ${CURSOR_MODEL:-}
       MAX_ITER: ${MAX_ITER:-5}
       A2A_MAX_CONTENT_LENGTH: ${A2A_MAX_CONTENT_LENGTH:-536870912}
+      PURPLE_OUTPUT_HOST: ${PURPLE_OUTPUT_HOST:-/home/agent/purple_agent_output}
     ports:
       - "9019:9019"
     volumes:
       - purple_work:/work
+      # Human-readable mirror of each context workspace (see README).
+      - ./purple_agent_output:/home/agent/purple_agent_output
       # Host login token for cursor-agent (same path as Cursor desktop: ~/.config/cursor/auth.json).
       - ${HOST_CURSOR_AUTH_JSON:-${HOME}/.config/cursor/auth.json}:/home/agent/.config/cursor/auth.json:rw
     networks:

@@ -16,6 +16,7 @@ from typing import Any
 from uuid import uuid4
 
 import cursor_runner
+import output_sync
 from a2a.server.tasks import TaskUpdater
 from a2a.types import DataPart, FilePart, FileWithBytes, Message, Part, Role, TaskState, TextPart
 from a2a.utils import get_message_text, new_agent_text_message
@@ -99,9 +100,11 @@ class Agent:
             )
             return
 
-        self._workspace = Path("/work") / ctx.replace("/", "_")
-        self._workspace.mkdir(parents=True, exist_ok=True)
-        self._unpack_message(message, self._workspace)
+        workspace = Path("/work") / ctx.replace("/", "_")
+        workspace.mkdir(parents=True, exist_ok=True)
+        self._workspace = workspace
+        self._unpack_message(message, workspace)
+        output_sync.sync_context_output(context_id=ctx, workspace=workspace, phase="after_unpack")
 
         feedback_history: list[dict[str, Any]] = []
         poc_bytes: bytes | None = None
@@ -111,12 +114,14 @@ class Agent:
                 TaskState.working,
                 new_agent_text_message(f"iter {it}: invoking cursor-agent", context_id=ctx, task_id=updater.task_id),
             )
-            assert self._workspace is not None
-            (self._workspace / "feedback.json").write_text(json.dumps(feedback_history))
+            (workspace / "feedback.json").write_text(json.dumps(feedback_history))
 
-            await cursor_runner.run_iteration(self._workspace, ITER_PROMPT)
+            await cursor_runner.run_iteration(workspace, ITER_PROMPT)
+            output_sync.sync_context_output(
+                context_id=ctx, workspace=workspace, phase="after_cursor", iteration=it
+            )
 
-            poc_path = self._workspace / "poc.bin"
+            poc_path = workspace / "poc.bin"
             if not poc_path.exists() or poc_path.stat().st_size == 0:
                 feedback_history.append({"iter": it, "error": "agent produced no poc.bin"})
                 continue
@@ -151,10 +156,14 @@ class Agent:
             finally:
                 self._waiting = False
             feedback_history.append({"iter": it, **feedback})
+            output_sync.sync_context_output(
+                context_id=ctx, workspace=workspace, phase="after_feedback", iteration=it
+            )
 
             if isinstance(feedback.get("exit_code"), int) and feedback["exit_code"] != 0:
                 break
 
+        output_sync.sync_context_output(context_id=ctx, workspace=workspace, phase="loop_finished")
         if poc_bytes is not None:
             # PROTOCOL: Submit final PoC as an artifact FilePart so green can score vulnerable vs fixed images.
             await updater.add_artifact(

@@ -5,6 +5,7 @@ raised accordingly so the SDK default limit does not reject green agents."""
 
 import argparse
 import os
+from pathlib import Path
 
 import uvicorn
 from a2a.server.apps import A2AStarletteApplication
@@ -14,6 +15,7 @@ from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 
 from executor import Executor
 
+_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 _DEFAULT_A2A_MAX_CONTENT = 512 * 1024 * 1024
 
 
@@ -37,7 +39,22 @@ def main() -> None:
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind the server")
     parser.add_argument("--port", type=int, default=9019, help="Port to bind the server")
     parser.add_argument("--card-url", type=str, help="URL to advertise in the agent card")
+    parser.add_argument(
+        "--output-host",
+        nargs="?",
+        const="default",
+        default=None,
+        metavar="PATH",
+        help="Mirror each context workspace under PATH for debugging (default: ./purple_agent_output). "
+        "Also via env PURPLE_OUTPUT_HOST (use 'off' to disable when env would otherwise enable).",
+    )
     args = parser.parse_args()
+
+    if args.output_host is not None:
+        if args.output_host == "default":
+            os.environ["PURPLE_OUTPUT_HOST"] = str(_PACKAGE_ROOT / "purple_agent_output")
+        else:
+            os.environ["PURPLE_OUTPUT_HOST"] = args.output_host
 
     skill = AgentSkill(
         id="vuln_poc_generation",
