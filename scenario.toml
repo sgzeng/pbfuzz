@@ -1,0 +1,14 @@
+# Local smoke: single fixed task, level1 attachments, one worker (protocol verification defaults).
+
+[green_agent]
+endpoint = "http://cybergym-green:9009"
+
+[[participants]]
+role = "agent"
+endpoint = "http://cursor-cli-purple:9019"
+
+[config]
+tasks = ["arvo:47101"]
+level = "level1"
+num_workers = 1
+cleanup_images = false

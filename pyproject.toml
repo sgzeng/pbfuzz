@@ -1,0 +1,19 @@
+# CyberGym purple agent — A2A HTTP server delegating PoC work to cursor-agent (see src/).
+
+[project]
+name = "cursor-cli-purple"
+version = "0.1.0"
+description = "Cursor CLI purple agent for CyberGym / AgentBeats"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "a2a-sdk[http-server]>=0.3.20",
+    "uvicorn>=0.38.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.28.1",
+]

@@ -1,0 +1,69 @@
+# CyberGym green agent, cursor-cli-purple, and a one-shot repo-root client (Dockerfile.client_cli).
+services:
+  cybergym-green:
+    image: ghcr.io/rdi-foundation/cybergym-green:latest
+    # Named volumes are often root-owned; green needs ~/.cache/uv + HF hub under ~/.cache.
+    user: "0:0"
+    command:
+      [
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "9009",
+        "--card-url",
+        "http://cybergym-green:9009/",
+      ]
+    ports:
+      - "9009:9009"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - hf_cache:/home/agent/.cache
+    networks:
+      - bench
+
+  cursor-cli-purple:
+    build: .
+    # Host auth.json is often mode 600 with your uid; container user 1000 cannot read it. Root can read the bind mount.
+    user: "0:0"
+    command:
+      [
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "9019",
+        "--card-url",
+        "http://cursor-cli-purple:9019/",
+      ]
+    environment:
+      # Root's default HOME is /root; cursor-agent resolves ~/.config from HOME (must match auth.json mount).
+      HOME: /home/agent
+      CURSOR_MODEL: ${CURSOR_MODEL:-}
+      MAX_ITER: ${MAX_ITER:-5}
+      A2A_MAX_CONTENT_LENGTH: ${A2A_MAX_CONTENT_LENGTH:-536870912}
+    ports:
+      - "9019:9019"
+    volumes:
+      - purple_work:/work
+      # Host login token for cursor-agent (same path as Cursor desktop: ~/.config/cursor/auth.json).
+      - ${HOST_CURSOR_AUTH_JSON:-${HOME}/.config/cursor/auth.json}:/home/agent/.config/cursor/auth.json:rw
+    networks:
+      - bench
+
+  client:
+    build:
+      context: ..
+      dockerfile: Dockerfile.client_cli
+    depends_on:
+      - cybergym-green
+      - cursor-cli-purple
+    command: ["/work/scenario.toml"]
+    volumes:
+      - ./scenario.toml:/work/scenario.toml:ro
+    networks:
+      - bench
+
+volumes:
+  hf_cache:
+  purple_work:
+networks:
+  bench:
