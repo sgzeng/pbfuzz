@@ -4,6 +4,7 @@ Request bodies can reach hundreds of MB once task tarballs are base64-encoded; m
 raised accordingly so the SDK default limit does not reject green agents."""
 
 import argparse
+import base64
 import os
 from pathlib import Path
 
@@ -17,6 +18,22 @@ from executor import Executor
 
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 _DEFAULT_A2A_MAX_CONTENT = 2 * 1024 * 1024 * 1024
+
+
+def _install_cursor_auth_from_env() -> None:
+    """If CURSOR_AUTH is set, decode standard base64 and write ~/.config/cursor/auth.json."""
+    raw = os.environ.get("CURSOR_AUTH")
+    if not raw or not str(raw).strip():
+        return
+    home = Path(os.environ.get("HOME", "/home/agent"))
+    path = home / ".config" / "cursor" / "auth.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cleaned = "".join(str(raw).split())
+    try:
+        decoded = base64.standard_b64decode(cleaned)
+    except Exception as e:
+        raise SystemExit(f"CURSOR_AUTH is not valid base64: {e}") from e
+    path.write_bytes(decoded)
 
 
 def _max_content_length() -> int | None:
@@ -55,6 +72,8 @@ def main() -> None:
             os.environ["PURPLE_OUTPUT_HOST"] = str(_PACKAGE_ROOT / "purple_agent_output")
         else:
             os.environ["PURPLE_OUTPUT_HOST"] = args.output_host
+
+    _install_cursor_auth_from_env()
 
     skill = AgentSkill(
         id="vuln_poc_generation",

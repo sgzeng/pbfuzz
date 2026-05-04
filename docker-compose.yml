@@ -23,7 +23,6 @@ services:
 
   cursor-cli-purple:
     build: .
-    # Host auth.json is often mode 600 with your uid; container user 1000 cannot read it. Root can read the bind mount.
     user: "0:0"
     command:
       [
@@ -35,20 +34,20 @@ services:
         "http://cursor-cli-purple:9019/",
       ]
     environment:
-      # Root's default HOME is /root; cursor-agent resolves ~/.config from HOME (must match auth.json mount).
+      # Root's default HOME is /root; cursor-agent reads ~/.config from HOME (server writes auth.json there when CURSOR_AUTH is set).
       HOME: /home/agent
-      CURSOR_MODEL: ${CURSOR_MODEL:-}
+      # base64-encoded contents of ~/.config/cursor/auth.json (set by smoke.sh or: export CURSOR_AUTH=$(base64 -w0 < ~/.config/cursor/auth.json))
+      CURSOR_AUTH: ${CURSOR_AUTH:-}
+      CURSOR_MODEL: ${CURSOR_MODEL:-claude-4.5-sonnet}
       MAX_ITER: ${MAX_ITER:-5}
       A2A_MAX_CONTENT_LENGTH: ${A2A_MAX_CONTENT_LENGTH:-0}
-      PURPLE_OUTPUT_HOST: ${PURPLE_OUTPUT_HOST:-/home/agent/purple_agent_output}
+      PURPLE_OUTPUT_HOST: ${PURPLE_OUTPUT_HOST:-off}
     ports:
       - "9019:9019"
     volumes:
       - purple_work:/work
       # Human-readable mirror of each context workspace (see README).
       - ./purple_agent_output:/home/agent/purple_agent_output
-      # Host login token for cursor-agent (same path as Cursor desktop: ~/.config/cursor/auth.json).
-      - ${HOST_CURSOR_AUTH_JSON:-${HOME}/.config/cursor/auth.json}:/home/agent/.config/cursor/auth.json:rw
     networks:
       - bench
 
