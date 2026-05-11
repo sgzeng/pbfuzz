@@ -1,0 +1,25 @@
+# CyberGym purple agent — A2A HTTP server delegating to pbfuzz + cursor-agent.
+
+[project]
+name = "pbfuzz-purple"
+version = "0.1.0"
+description = "pbfuzz-based purple agent for CyberGym level3 / AgentBeats"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "a2a-sdk[http-server]>=0.3.20,<1.0",
+    "uvicorn>=0.38.0",
+    "pydantic>=2.0.0",
+    "mcp>=1.13",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.28.1",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["src"]

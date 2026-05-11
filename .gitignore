@@ -1,0 +1,6 @@
+purple_agent_output/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+plan.md
