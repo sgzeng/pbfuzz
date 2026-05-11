@@ -21,6 +21,7 @@ RUN \
     --mount=type=cache,target=/home/agent/.cache/uv,uid=1000 \
     uv sync --locked
 
+ENV PORT=9019
 ENTRYPOINT ["uv", "run", "src/server.py"]
-CMD ["--host", "0.0.0.0", "--port", "9019", "--card-url", "http://cursor-cli-purple:9019/"]
+CMD ["--host", "0.0.0.0", "--card-url", "http://cursor-cli-purple:9019/"]
 EXPOSE 9019

@@ -1,6 +1,11 @@
 {
   manifest_version: "0.1.0",
 
+  // lets CyberGym green consume slots.proxy → this agent’s A2A export.
+  slots: {
+    proxy: { kind: "a2a", optional: true },
+  },
+
   // Deploy-time secrets and URLs for cursor-cli-purple (Cursor CLI + A2A bridge for CyberGym).
   // Provide cursor_auth (base64 auth.json) for cursor-agent (see README).
   config_schema: {
@@ -30,13 +35,13 @@
       "src/server.py",
       "--host",
       "0.0.0.0",
-      "--port",
-      "9019",
     ],
 
     env: {
       PYTHONUNBUFFERED: "1",
       HOME: "/home/agent",
+      // Amber / runtimes may override PORT; keep network.endpoints.port in sync with this default.
+      PORT: "9019",
       CURSOR_AUTH: "${config.cursor_auth}",
       CURSOR_MODEL: "${config.cursor_model}",
       // Match docker-compose: large A2A bodies; override in a fork if needed.
