@@ -2,8 +2,6 @@
 
 Purple agent for [CyberGym](https://huggingface.co/datasets/sunblaze-ucb/cybergym) on [AgentBeats](https://agentbeats.dev). It wraps the **PBFuzz** agentic directed-fuzzing stack behind CyberGym’s A2A protocol: green supplies level-3 task bundles (`repo-vul`, optional fix metadata, `patch.diff`); the purple side prepares a buildable vulnerable tree, seeds lightweight reach/trigger instrumentation, runs the **PLAN→IMPLEMENT→EXECUTE→REFLECT** loop with MCP-backed fuzzing and debugging tools, and exchanges candidate PoCs with green via `test_vulnerable` before emitting a final artifact.
 
-This document is written for **CyberGym organizers and reviewers**. Claims about benchmark scores refer to the cited paper’s Magma evaluation unless explicitly scoped to this integration.
-
 ---
 
 ## 1. Scientific background: PBFuzz

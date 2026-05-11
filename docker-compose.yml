@@ -1,4 +1,6 @@
 # CyberGym green + pbfuzz-purple + one-shot client (repo-root Dockerfile.client_cli).
+# Project name `purple` + service `pbfuzz` → image `purple-pbfuzz` (avoid duplicating the repo folder name).
+name: purple
 services:
   cybergym-green:
     image: ghcr.io/rdi-foundation/cybergym-green:latest
@@ -17,7 +19,7 @@ services:
     networks:
       - bench
 
-  pbfuzz-purple:
+  pbfuzz:
     build:
       context: ..
       dockerfile: pbfuzz-purple/Dockerfile
@@ -26,7 +28,7 @@ services:
       [
         "--host", "0.0.0.0",
         "--port", "9029",
-        "--card-url", "http://pbfuzz-purple:9029/",
+        "--card-url", "http://pbfuzz:9029/",
       ]
     environment:
       # Root's default HOME is /root; cursor-agent reads ~/.config from HOME (server writes auth.json there when CURSOR_AUTH is set).
@@ -54,7 +56,7 @@ services:
       dockerfile: Dockerfile.client_cli
     depends_on:
       - cybergym-green
-      - pbfuzz-purple
+      - pbfuzz
     command: ["/work/scenario.toml"]
     volumes:
       - ./scenario.toml:/work/scenario.toml:ro

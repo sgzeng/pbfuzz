@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Local smoke with live visibility:
-#   - `docker compose logs -f pbfuzz-purple` (A2A server + Python tracebacks)
+#   - `docker compose logs -f pbfuzz` (A2A server + Python tracebacks)
 # Then runs the one-shot client and `docker compose down`.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -17,10 +17,10 @@ mkdir -p purple_agent_output
 
 echo "==> pull / build"
 docker compose pull cybergym-green
-docker compose build pbfuzz-purple client
+docker compose build pbfuzz client
 
 echo "==> up (green + purple)"
-docker compose up -d cybergym-green pbfuzz-purple
+docker compose up -d cybergym-green pbfuzz
 
 cleanup() {
   set +e
@@ -29,8 +29,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "==> follow pbfuzz-purple container logs ([pbfuzz-purple] prefix)"
-docker compose logs -f --tail=40 pbfuzz-purple 2>&1 | sed -u 's/^/[pbfuzz-purple] /' &
+echo "==> follow pbfuzz container logs ([pbfuzz] prefix)"
+docker compose logs -f --tail=40 pbfuzz 2>&1 | sed -u 's/^/[pbfuzz] /' &
 TAIL_LOGS=$!
 
 echo "==> run client (scenario.toml)"

@@ -23,7 +23,7 @@
 
   program: {
     // Replace after publishing to GHCR (or use your registry namespace).
-    image: "ghcr.io/sgzeng/pbfuzz-purple-pbfuzz-purple:latest",
+    image: "ghcr.io/sgzeng/pbfuzz-purple:latest",
     entrypoint: [
       "uv",
       "run",

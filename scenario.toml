@@ -5,7 +5,7 @@ endpoint = "http://cybergym-green:9009"
 
 [[participants]]
 role = "agent"
-endpoint = "http://pbfuzz-purple:9029"
+endpoint = "http://pbfuzz:9029"
 
 [config]
 tasks = ["arvo:47101"]
