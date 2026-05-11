@@ -74,7 +74,10 @@ def _max_content_length() -> int | None:
 
 
 def main() -> None:
-    """Build Agent Card + DefaultRequestHandler and serve the A2A HTTP app with uvicorn."""
+    """Build Agent Card + DefaultRequestHandler and serve the A2A HTTP app with uvicorn.
+
+    Per-task wall-clock cap: ``AGENT_RUN_TIMEOUT_SEC`` (default 600), enforced in ``Executor``.
+    """
     parser = argparse.ArgumentParser(description="Run the cursor-cli-purple A2A agent.")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind the server")
     parser.add_argument(

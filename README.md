@@ -22,6 +22,7 @@ flowchart LR
 | `CURSOR_AUTH` | Docker / smoke | Standard base64 of `~/.config/cursor/auth.json` file bytes. The server decodes it at startup and writes `auth.json` under `HOME`. Alternative to bind-mounting the file. |
 | `CURSOR_MODEL` | No | Passed as `--model` when set (e.g. `haiku-4.5`). |
 | `MAX_ITER` | No | Max cursor iterations per task (default `5`). |
+| `AGENT_RUN_TIMEOUT_SEC` | No | Wall-clock seconds for the whole PoC task (`agent.run`); after this the task is **failed** and abandoned (default **`600`** / 10 minutes). |
 | `A2A_MAX_CONTENT_LENGTH` | No | Max JSON-RPC body size in bytes. Code default **2GiB**; compose defaults to **`0`** (unlimited) so level3 dual-tar payloads are accepted. |
 | `PURPLE_OUTPUT_HOST` | No | If set to a path (or `default` / `1`), mirrors each `context_id` workspace under that directory for debugging. Use `off` / `none` / empty to disable. Default in compose: `/home/agent/purple_agent_output` → host `./purple_agent_output`. |
 

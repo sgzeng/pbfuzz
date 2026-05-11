@@ -30,7 +30,16 @@ async def run_iteration(workspace: Path, prompt: str, timeout: int = 900) -> str
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
     )
-    out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except (TimeoutError, asyncio.CancelledError):
+        if proc.returncode is None:
+            proc.kill()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=10)
+            except (TimeoutError, asyncio.CancelledError):
+                pass
+        raise
     text = out.decode(errors="replace")
     (workspace / "cursor.log").write_text(text)
     return text
