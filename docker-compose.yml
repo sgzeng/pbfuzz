@@ -30,7 +30,6 @@ services:
     command:
       [
         "--host", "0.0.0.0",
-        "--port", "9029",
         "--card-url", "http://pbfuzz:9029/",
       ]
     environment:
@@ -45,6 +44,7 @@ services:
       PURPLE_OUTPUT_HOST: ${PURPLE_OUTPUT_HOST:-/home/agent/purple_agent_output}
       MAX_OUTER_ROUNDS: ${MAX_OUTER_ROUNDS:-3}
       MAX_INNER_ITER: ${MAX_INNER_ITER:-10}
+      PORT: "9029"
     ports:
       - "9029:9029"
     volumes:

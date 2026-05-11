@@ -40,6 +40,7 @@ RUN \
     uv sync && \
     uv pip install -r pbfuzz/requirements.txt
 
+ENV PORT=9029
 ENTRYPOINT ["uv", "run", "src/server.py"]
-CMD ["--host", "0.0.0.0", "--port", "9029", "--card-url", "http://pbfuzz:9029/"]
+CMD ["--host", "0.0.0.0", "--card-url", "http://pbfuzz:9029/"]
 EXPOSE 9029

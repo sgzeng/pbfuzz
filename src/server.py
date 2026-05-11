@@ -17,6 +17,29 @@ _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 _DEFAULT_A2A_MAX_CONTENT = 2 * 1024 * 1024 * 1024
 
 
+def _listen_port(cli_port: int | None) -> int:
+    """Bind port: explicit --port wins, else Amber-style PORT env, else 9029."""
+    if cli_port is not None:
+        return cli_port
+    raw = os.environ.get("PORT")
+    if raw is None or not str(raw).strip():
+        return 9029
+    try:
+        return int(str(raw).strip())
+    except ValueError:
+        return 9029
+
+
+def _agent_card_url(host: str, port: int, card_url: str | None) -> str:
+    """Public URL in the Agent Card; avoid advertising 0.0.0.0 when no --card-url."""
+    if card_url:
+        return card_url if card_url.endswith("/") else f"{card_url}/"
+    display_host = host
+    if host in ("0.0.0.0", "::", "[::]"):
+        display_host = "127.0.0.1"
+    return f"http://{display_host}:{port}/"
+
+
 def _install_cursor_auth_from_env() -> None:
     """If CURSOR_AUTH is set, decode standard base64 and write ~/.config/cursor/auth.json."""
     raw = os.environ.get("CURSOR_AUTH")
@@ -49,7 +72,12 @@ def _max_content_length() -> int | None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the pbfuzz-purple A2A agent.")
     parser.add_argument("--host", type=str, default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=9029)
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="Port to bind (default: PORT environment variable if set, else 9029)",
+    )
     parser.add_argument("--card-url", type=str, default=None)
     parser.add_argument(
         "--output-host",
@@ -60,6 +88,7 @@ def main() -> None:
         help="Mirror workspaces under PATH (env PURPLE_OUTPUT_HOST).",
     )
     args = parser.parse_args()
+    port = _listen_port(args.port)
 
     if args.output_host is not None:
         if args.output_host == "default":
@@ -79,7 +108,7 @@ def main() -> None:
     agent_card = AgentCard(
         name="pbfuzz-purple",
         description="pbfuzz + cursor-agent purple agent for CyberGym (INIT + PLAN→SUCCESS).",
-        url=args.card_url or f"http://{args.host}:{args.port}/",
+        url=_agent_card_url(args.host, port, args.card_url),
         version="1.0.0",
         default_input_modes=["text", "file"],
         default_output_modes=["text", "file"],
@@ -99,7 +128,7 @@ def main() -> None:
     uvicorn.run(
         server.build(),
         host=args.host,
-        port=args.port,
+        port=port,
         timeout_keep_alive=300,
     )
 
