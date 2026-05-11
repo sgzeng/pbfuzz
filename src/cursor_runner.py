@@ -86,7 +86,7 @@ async def run_iteration_source_only(prompt_file: Path, workspace: Path, timeout:
 async def _communicate_with_timeout(
     proc: asyncio.subprocess.Process, timeout: int
 ) -> tuple[bytes, bytes | None]:
-    """Collect output with timeout; on timeout, kill process and raise with tail output."""
+    """Collect output with timeout; on timeout or cancel, kill process (timeout raises with tail)."""
     try:
         return await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError as e:
@@ -96,3 +96,11 @@ async def _communicate_with_timeout(
         raise TimeoutError(
             f"cursor-agent timed out after {timeout}s (partial_output_tail={tail!r})"
         ) from e
+    except asyncio.CancelledError:
+        if proc.returncode is None:
+            proc.kill()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=10)
+            except (TimeoutError, asyncio.CancelledError):
+                pass
+        raise

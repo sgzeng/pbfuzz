@@ -70,6 +70,7 @@ def _max_content_length() -> int | None:
 
 
 def main() -> None:
+    """Serve the A2A app; per-task wall-clock cap ``AGENT_RUN_TIMEOUT_SEC`` (default 600) in ``Executor``."""
     parser = argparse.ArgumentParser(description="Run the pbfuzz-purple A2A agent.")
     parser.add_argument("--host", type=str, default="127.0.0.1")
     parser.add_argument(
