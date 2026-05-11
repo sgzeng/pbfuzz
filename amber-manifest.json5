@@ -13,7 +13,7 @@
       },
       cursor_model: {
         type: "string",
-        default: "claude-4.5-sonnet",
+        default: "gpt-5.4-mini-medium",
         description: "Optional. Passed to cursor-agent as --model (e.g. haiku-4.5); also used as PBFUZZ_LLM_MODEL when set.",
       },
     },
