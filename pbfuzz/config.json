@@ -1,0 +1,16 @@
+{
+  "static_result_folder": "./tests/fixtures/static_analysis_readelf",
+  "llm_model": "gemini-2.5-pro",
+  "source_code_folder": "./tests/fixtures",
+  "cmd": ["./tests/fixtures/readelf", "@@"],
+  "output_dir": "./output",
+  "debug_enabled": false,
+  "reached_pattern": "Bug .{0,19} reached",
+  "triggered_pattern": "Bug .{0,19} triggered",
+  "max_iters": 1000,
+  "exec_timeout_sec": 3,
+  "enable_static_precondition_inference": true,
+  "lldb_path": "/usr/bin/lldb-20",
+  "enable_debugger_for_all": false,
+  "max_calling_context_depth": 3
+}

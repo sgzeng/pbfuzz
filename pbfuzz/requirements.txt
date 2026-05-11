@@ -1,0 +1,23 @@
+google-genai>=1.0.0
+openai>=1.0.0
+anthropic>=0.20.0
+
+# Core MCP support
+pydantic>=2.0.0
+mcp>=1.13
+# Debug Adapter Protocol
+dap-mcp>=0.1.5
+dap-types>=0.1.0
+
+cxxfilt>=0.3.0
+pytest
+pytest-asyncio
+psutil
+
+# Tree-sitter language parsing (official individual packages)
+tree-sitter>=0.25.1
+tree-sitter-c>=0.24.0
+tree-sitter-cpp>=0.23.0
+
+# Python libclang bindings
+libclang>=16.0.0

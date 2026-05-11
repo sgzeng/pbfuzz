@@ -1,0 +1,12 @@
+17053822235489054379,__cxx_global_var_init,/usr/include/c++/11/iostream,74,74
+17025935215193814627,_Z14print_elf_infoRK9ELFHeader,/mnt/shared/directed_property_based_fuzzer/tests/fixtures/readelf.cpp,38,62
+17890361391579291293,_ZSt3hexRSt8ios_base,/usr/include/c++/11/bits/ios_base.h,1054,1054
+9335974993646204985,_ZSt3decRSt8ios_base,/usr/include/c++/11/bits/ios_base.h,1046,1046
+11750070784893269751,_Z31check_dangerous_elf_combinationRK9ELFHeader,/mnt/shared/directed_property_based_fuzzer/tests/fixtures/readelf.cpp,75,99
+15822663052811949562,main,/mnt/shared/directed_property_based_fuzzer/tests/fixtures/readelf.cpp,101,148
+17712095564398242050,_ZNSt8ios_base4setfESt13_Ios_FmtflagsS0_,/usr/include/c++/11/bits/ios_base.h,693,693
+4137305450315813326,_ZStaNRSt13_Ios_FmtflagsS_,/usr/include/c++/11/bits/ios_base.h,103,103
+16870227999711984077,_ZStcoSt13_Ios_Fmtflags,/usr/include/c++/11/bits/ios_base.h,95,95
+15571138047888655899,_ZStoRRSt13_Ios_FmtflagsS_,/usr/include/c++/11/bits/ios_base.h,99,99
+3063328518614405998,_ZStanSt13_Ios_FmtflagsS_,/usr/include/c++/11/bits/ios_base.h,83,83
+14532632606131672279,_ZStorSt13_Ios_FmtflagsS_,/usr/include/c++/11/bits/ios_base.h,87,87

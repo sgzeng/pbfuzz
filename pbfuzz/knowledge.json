@@ -1,0 +1,72 @@
+{
+  "projects": {
+    "test_project": ["target"],
+    "binutils": [
+      "as",
+      "ld",
+      "objdump",
+      "readelf",
+      "strings",
+      "nm",
+      "size",
+      "strip",
+      "ar",
+      "ranlib",
+      "c++filt",
+      "addr2line",
+      "objcopy"
+    ],
+    "libming": [
+      "xmllint",
+      "xmlcatalog"
+    ],
+    "libxml": [
+      "xmllint",
+      "xmlcatalog"
+    ],
+    "libpng": [
+      "libpng_read_fuzzer",
+      "pngfix",
+      "pngcrush",
+      "pngquant",
+      "pngtopnm",
+      "pnmtopng"
+    ],
+    "libsndfile": [
+      "sndfile_fuzzer"
+    ],
+    "libtiff": [
+      "tiff_read_rgba_fuzzer",
+      "tiffcp"
+    ],
+    "libxml2": [
+      "libxml2_xml_read_memory_fuzzer",
+      "xmllint"
+    ],
+    "lua": [
+      "lua"
+    ],
+    "openssl": [
+      "asn1",
+      "asn1parse",
+      "bignum",
+      "client",
+      "server",
+      "x509"
+    ],
+    "php": [
+      "exif",
+      "json",
+      "parser",
+      "unserialize"
+    ],
+    "poppler": [
+      "pdf_fuzzer",
+      "pdfimages",
+      "pdftoppm"
+    ],
+    "sqlite3": [
+      "sqlite3_fuzz"
+    ]
+  }
+}
