@@ -40,6 +40,9 @@
     env: {
       PYTHONUNBUFFERED: "1",
       HOME: "/home/agent",
+      // fallback package lives at /home/agent/fallback — must be on PYTHONPATH even if the runtime
+      // injects env from this manifest rather than inheriting Docker's ENV layer.
+      PYTHONPATH: "/home/agent:/home/agent/pbfuzz",
       // Amber / runtimes may override PORT; keep network.endpoints.port in sync with this default.
       PORT: "9029",
       CURSOR_AUTH: "${config.cursor_auth}",
