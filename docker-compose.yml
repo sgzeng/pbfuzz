@@ -21,8 +21,11 @@ services:
 
   pbfuzz:
     build:
-      context: ..
-      dockerfile: pbfuzz-purple/Dockerfile
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Dockerfile defaults to APP_DIR=pbfuzz-purple for builds from repo root; compose builds from ./pbfuzz-purple.
+        APP_DIR: .
     user: "0:0"
     command:
       [
