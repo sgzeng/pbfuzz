@@ -326,21 +326,27 @@ def create_workflow_files(config, fuzzer_config=None):
 
     # Mirror machine-readable build metadata for mcp_build_server / rebuild_project
     try:
-        ws_root = config.source_code_dir.parent
-        build_path = ws_root / "build_info.json"
-        build_path.write_text(
-            json.dumps(
-                {
-                    "cve_id": getattr(config, "cve_id", "") or getattr(config, "task_id", "") or "",
-                    "build_cmd": getattr(config, "build_cmd", "") or "",
-                    "binary_path": getattr(config, "binary_path", "") or "",
-                    "cwd": getattr(config, "build_cwd", "") or getattr(config, "cybergym_cwd", "") or "",
-                    "run_cmd": list(config.cmd) if getattr(config, "cmd", None) else [],
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
+        ws_root = Path(
+            getattr(config, "workspace_root", None) or config.source_code_dir.parent
         )
+        build_path = ws_root / "build_info.json"
+        existing: dict = {}
+        if build_path.is_file():
+            try:
+                existing = json.loads(build_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                existing = {}
+        build_obj = {
+            "cve_id": getattr(config, "cve_id", "") or getattr(config, "task_id", "") or existing.get("cve_id", ""),
+            "build_cmd": getattr(config, "build_cmd", "") or existing.get("build_cmd", ""),
+            "binary_path": getattr(config, "binary_path", "") or existing.get("binary_path", ""),
+            "cwd": getattr(config, "build_cwd", "") or getattr(config, "cybergym_cwd", "") or existing.get("cwd", ""),
+            "run_cmd": list(config.cmd) if getattr(config, "cmd", None) else existing.get("run_cmd", []),
+            "bug_class": getattr(config, "bug_class", "") or existing.get("bug_class", ""),
+            "sanitizer": getattr(config, "sanitizer", "") or existing.get("sanitizer", ""),
+            "sanitizer_env": getattr(config, "sanitizer_env", None) or existing.get("sanitizer_env") or {},
+        }
+        build_path.write_text(json.dumps(build_obj, indent=2), encoding="utf-8")
         print(f"✓ Wrote {build_path}")
     except OSError as e:
         print(f"⚠️ Could not write build_info.json: {e}")
@@ -357,7 +363,9 @@ def generate_mcp_config(config, fuzzer_config=None):
 
     abs_output_dir = Path(config.output_dir).absolute()
     abs_source_code_dir = Path(config.source_code_dir).absolute()
-    abs_workspace_root = abs_source_code_dir.parent
+    abs_workspace_root = Path(
+        getattr(config, "workspace_root", None) or abs_source_code_dir.parent
+    ).absolute()
 
     servers = {
         "fuzzer": {

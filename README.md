@@ -37,27 +37,74 @@ uv run pbfuzz reproduce \
 |------|---------|
 | `--cve-description` | Text file with CVE id and description |
 | `--patch` | Upstream fix patch (unified diff); used to derive target lines and trigger conditions |
-| `--source` | Git repository root (agent creates `work/source` via `git worktree`) |
-| `--output` | Run directory: logs, `work/`, and final `poc.bin` |
+| `--source` | Git repository root (INIT agent creates `<run>/source` via `git worktree`) |
+| `--output` | Run directory: `inputs/`, `env/`, `source/`, `findings/`, and final `poc.bin` |
 
-**Success** — `poc.bin` is written and stderr from the built binary contains `{CVE-ID} triggered` (oracle inserted during INIT).
+**Success** — `poc.bin` is written and the built binary aborts with a sanitizer report (ASan/UBSan/MSan) when fed the PoC.
 
-## Layout after a run
+## Output directory layout
+
+`pbfuzz reproduce --output <run-root>` creates a single run tree grouped by producer. Paths below use `<run-root>` (e.g. `/tmp/pbfuzz-runs/cve-2024-22860` from `ffmpeg_demo.sh`).
+
+### Overview tree
 
 ```
-output/
-  TASK.md
-  runtime.log
-  poc.bin              # final PoC (if found)
+<run-root>/
+  TASK.md                            # driver — task summary for agents
+  runtime.log                        # driver — timeline (includes [error] lines)
+  poc.bin                            # driver — final PoC (only after sanitizer crash)
+
   inputs/
-    CVE_description.txt
-    fix.patch
-  work/
-    source/            # vulnerable git worktree
-    build_info.json
-    static_results/BBtargets.txt
-    output/            # fuzzer logs, candidate_poc.bin
-  logs/                # mirrored debug artifacts
+    CVE_description.txt              # user input
+    fix.patch                        # user input
+
+  source/                            # shared build tree (INIT creates; inner agent edits)
+    .cursor/
+      cli.json                       # cursor_runner permissions
+      mcp.json                       # launcher generate_mcp_config
+      project_config.md              # launcher create_workflow_files
+      workflow_state.md              # PLAN→REFLECT state
+    schemas.py                       # launcher copies from pbfuzz/
+    cursor.log                       # inner cursor-agent (live)
+    …                                # vulnerable source + build artifacts
+
+  env/                               # INIT / env-setup agent
+    build_info.json                  # build_cmd, run_cmd, bug_class, sanitizer, …
+    static_results/
+      BBtargets.txt                  # target locations (from fix.patch)
+    init_agent_{N}.log               # INIT cursor-agent log snapshot
+    init_ws/                         # INIT cursor-agent private cwd
+      .cursor/cli.json
+      cursor.log
+      inputs/ → symlink to <run-root>/inputs/
+
+  findings/                          # inner pbfuzz agent (= fuzzer output_dir)
+    agent.log                        # snapshot of source/cursor.log
+    prompt.txt                       # launcher.py — inner agent prompt
+    launcher.json                    # driver — fuzzer config for this round
+    last_build.log                   # mcp_build rebuild log
+    pbf_error.log                    # PBF errors
+    cur_testcase                     # current fuzz input
+    sanitizer_run_{N}.log            # driver PoC verification run
+    driver_errors.log                # driver errors
+    candidate_poc.bin                # PBF trigger artifact
+    CANDIDATE_READY                  # marker: poc_{round}_{iter}
+    plans/
+      plan_{N}.json
+      runtime_config_{N}.json
+    generators/
+      gen_{N}.py
+    fuzz_results/
+      results_{N}.json
+    testcases/
+    queue/
+    crashes/
+      poc_{N}_{iter}
+    .cursor/                         # snapshot of source/.cursor/
+      mcp.json
+      cli.json
+      workflow_state.md
+      project_config.md
 ```
 
 ## Environment variables

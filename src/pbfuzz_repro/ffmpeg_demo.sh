@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end smoke: three FFmpeg CVE reproduction cases.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 export PBFUZZ_HOME="${PBFUZZ_HOME:-$ROOT/pbfuzz}"
 export PYTHONPATH="$PBFUZZ_HOME:$ROOT/src:${PYTHONPATH:-}"
 

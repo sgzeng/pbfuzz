@@ -77,7 +77,7 @@ graph LR
 
 ### RULE_MAGMA: Do not analyze Magma benchmark instrumentation. See magma.md.
 
-### RULE_FUZZ_TOOL: Only fuzz MCP tool in EXECUTE phase can declare PoC
+### RULE_FUZZ_TOOL: Only fuzz MCP tool in EXECUTE phase can declare PoC. DO NOT write `candidate_poc.bin` or `CANDIDATE_READY` by hand.
 
 ### RULE_MULTI_TARGETS: Triggering one target is sufficient. If a target has multiple triggering conditions, satisfy any bug predicate is sufficient. Prioritize simpler bug predicates.
 

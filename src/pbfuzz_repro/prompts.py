@@ -2,21 +2,26 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from pbfuzz_repro.workspace import RunLayout
+
 WORKSPACE_FILES_GUIDE = """Files (run output directory):
 - TASK.md — summary of this reproduction task (read first).
 - inputs/CVE_description.txt — CVE identifier and description.
 - inputs/fix.patch — upstream fix patch (ground truth for target locations).
-- work/ — PBFuzz workspace prepared by this tool:
-  - source/ — vulnerable project tree (git worktree you create).
-  - static_results/BBtargets.txt — Target Locations (you must fill from fix.patch).
-  - build_info.json — build metadata you must fill in.
-  - output/ — fuzzing output; inner agent writes candidate_poc.bin + CANDIDATE_READY here.
+- env/ — INIT agent outputs:
+  - build_info.json — build metadata, bug_class, sanitizer, run_cmd.
+  - static_results/BBtargets.txt — Target Locations (from fix.patch).
+  - init_ws/ — private INIT cursor workspace (do not use for builds).
+- source/ — vulnerable project tree (git worktree you create at `<run>/source`).
+- findings/ — inner fuzz agent output (do not write here during INIT).
 """
 
 INIT_PROMPT = """You are the **INIT** agent for standalone CVE bug reproduction with PBFuzz.
 Your job is environment setup only: identify the vulnerable revision, create an isolated
-git worktree, produce a working native build, and write Target Locations derived from the
-fix patch. Do **not** start fuzzing or PoC generation here.
+git worktree, produce a working native build with the correct sanitizer, and write Target
+Locations derived from the fix patch. Do **not** start fuzzing or PoC generation here.
 
 """ + WORKSPACE_FILES_GUIDE + """
 
@@ -24,9 +29,9 @@ fix patch. Do **not** start fuzzing or PoC generation here.
 
 The driver appends a **Resolved paths** block below with absolute paths for:
 - **Source repository** (git root; run `git worktree` from here)
-- **Run output directory** (contains `inputs/`, `work/`, `TASK.md`)
-- **Work directory** (`work/` — write `build_info.json` and `static_results/` here)
-- **Vulnerable tree** (`work/source/` — create via `git worktree add`)
+- **Run output directory** (contains `inputs/`, `env/`, `source/`, `findings/`, `TASK.md`)
+- **Env directory** (`env/` — write `build_info.json` and `static_results/` here)
+- **Vulnerable tree** (`source/` — create via `git worktree add`)
 
 ## Your tasks (shell tools only; no MCP tools)
 
@@ -36,47 +41,60 @@ The driver appends a **Resolved paths** block below with absolute paths for:
    determine the **vulnerable git ref** (commit, tag, or `commit^` before the fix).
    Create an isolated worktree:
    ```bash
-   git -C <source-repo> worktree add -f <work>/source <vuln_ref>
+   git -C <source-repo> worktree add -f <run>/source <vuln_ref>
    ```
-   All builds and edits happen under `<work>/source/`.
-3. Discover the build system under `work/source/` (configure, cmake, make, etc.).
+   All builds and edits happen under `<run>/source/`.
+3. Discover the build system under `source/` (configure, cmake, make, etc.).
    Install missing OS packages with `apt-get install -y` when needed (you may run as root).
    Build the **correct program** named in the CVE description (e.g. `ffprobe` for demuxer/parser
    bugs, not only `ffmpeg`). Enable only what you need (`--enable-ffprobe`, etc.).
-   Iterate until the target binary exists. Prefer debug symbols (`-g`) and sanitizers when useful.
-4. Write **`work/build_info.json`**:
+
+4. **Bug class & sanitizer (required)** — classify the CVE into one of:
+   `{heap-buffer-overflow, stack-buffer-overflow, integer-overflow, signed-shift, null-deref,
+   use-after-free, uninit-memory, divide-by-zero, oob-read, oob-write, other}`
+   and choose the matching sanitizer: `asan`, `ubsan`, `msan`, or `asan+ubsan`.
+   Embed `-fsanitize=...`, `-fno-omit-frame-pointer`, `-g`, and `-O1` in **both** compile and
+   link flags inside `build_cmd`. Example for integer overflow: `-fsanitize=undefined` or
+   `asan+ubsan` for heap issues.
+
+5. Write **`env/build_info.json`**:
    ```json
    {
      "cve_id": "CVE-YYYY-NNNNN",
      "build_cmd": "shell command that rebuilds from cwd below",
-     "cwd": "subdir under work/source/ relative to that tree; empty string = source root",
-     "binary_path": "path to executable relative to work/source/ or absolute",
-     "run_cmd": ["./built_binary", "@@"]
+     "cwd": "subdir under source/ relative to that tree; empty string = source root",
+     "binary_path": "path to executable relative to source/ or absolute",
+     "run_cmd": ["./built_binary", "@@"],
+     "bug_class": "integer-overflow",
+     "sanitizer": "asan+ubsan",
+     "sanitizer_env": {
+       "ASAN_OPTIONS": "abort_on_error=1:detect_leaks=0:symbolize=1",
+       "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+     }
    }
    ```
-   `@@` in `run_cmd` is the input-file placeholder (usually after `-i` or as sole argument).
-   **`run_cmd` must match how the CVE is triggered** (read the CVE description: demuxer name,
-   format flag, etc.). **`build_cmd` must succeed** when run with `cwd` as documented.
-5. Write **`work/static_results/BBtargets.txt`** by parsing `inputs/fix.patch` — one entry
+   `@@` in `run_cmd` is the input-file placeholder.
+   **`run_cmd` must match how the CVE is triggered** (demuxer name, format flag, etc.).
+   **`build_cmd` must succeed** when run with `cwd` as documented.
+
+6. Write **`env/static_results/BBtargets.txt`** by parsing `inputs/fix.patch` — one entry
    per interesting changed line:
    ```
    relative/path.c:LINE[,condition_expr]
    ```
-   - Paths are relative to `work/source/`.
-   - `LINE` is 1-based inside the vulnerable file (the line where the bug manifests or
-     the guard the fix adds).
-   - `condition_expr` is a C expression that is **non-zero when the bug fires** (typically
-     the negation of what the fix added, or an expression matching the vulnerable arithmetic
-     e.g. signed multiply overflow before a cast). Use `1` if unsure; the PLAN agent may refine later.
-6. Verify: `binary_path` exists, `build_info.json` parses, and `BBtargets.txt` has at least
-   one non-comment entry whose file exists under `work/source/`.
-7. Print one final line: `INIT done: <one-sentence summary>`.
+   - Paths are relative to `source/`.
+   - `LINE` is 1-based inside the vulnerable file.
+   - `condition_expr` is a C expression that is **non-zero when the bug fires**.
+
+7. Verify: `binary_path` exists, `build_info.json` parses, and `BBtargets.txt` has at least
+   one non-comment entry whose file exists under `source/`.
+8. Print one final line: `INIT done: <one-sentence summary>`.
 
 ## What you must NOT do
 
 - Do **not** call `insert_oracle` or `rebuild_project` — the driver handles those after validation.
-- Do **not** run long fuzzing sessions.
-- Do **not** modify files outside `work/` except `git worktree` operations on the source repo.
+- Do **not** run long fuzzing sessions or write into `findings/`.
+- Do **not** modify files outside `<run>/` except `git worktree` operations on the source repo.
 
 ## Failure feedback
 
@@ -84,20 +102,29 @@ If the driver rejects your output, a **Previous attempt feedback** block is appe
 address those points and retry.
 """
 
+PIER_APPENDIX = """
+
+## Driver constraint (inner PIER loop)
+
+Continue PLAN → IMPLEMENT → EXECUTE → REFLECT until the fuzz MCP tool reports oracle
+**triggered**, or `max_iters` is exhausted. Do **not** transition to SUCCESS or write
+`findings/candidate_poc.bin` by hand — only the fuzz MCP tool may declare a PoC.
+"""
+
 
 def build_init_prompt(
     *,
     source_repo: Path,
-    output_dir: Path,
-    work_dir: Path,
+    layout: RunLayout,
     last_feedback: str = "",
 ) -> str:
     paths_block = (
         "\n\n## Resolved paths\n"
         f"- **Source repository** (git root): `{source_repo.resolve()}`\n"
-        f"- **Run output directory**: `{output_dir.resolve()}`\n"
-        f"- **Work directory**: `{work_dir.resolve()}`\n"
-        f"- **Vulnerable tree** (create with worktree): `{ (work_dir / 'source').resolve() }`\n"
+        f"- **Run output directory**: `{layout.run_root.resolve()}`\n"
+        f"- **Env directory**: `{layout.env.resolve()}`\n"
+        f"- **Vulnerable tree** (create with worktree): `{layout.source.resolve()}`\n"
+        f"- **INIT private cwd**: `{layout.init_ws.resolve()}`\n"
     )
     feedback_block = ""
     if last_feedback:

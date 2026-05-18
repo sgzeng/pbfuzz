@@ -6,9 +6,11 @@ import argparse
 import base64
 import os
 import sys
+import tempfile
 from pathlib import Path
 
-from pbfuzz_repro.runner import ReproArgs, run_reproduction
+from pbfuzz_repro.runner import ReproArgs, run_reproduction, verify_sanitizer_crash
+from pbfuzz_repro.workspace import RunLayout, extract_cve_id, init_layout
 
 
 def install_cursor_auth(raw_b64: str | None) -> None:
@@ -66,7 +68,6 @@ def _parse_reproduce(ns: argparse.Namespace) -> int:
         return 2
 
     args.output.mkdir(parents=True, exist_ok=True)
-    (args.output / "logs").mkdir(parents=True, exist_ok=True)
     poc = run_reproduction(args)
     if poc is None or not poc.is_file() or poc.stat().st_size == 0:
         print("Failed: no poc.bin produced. See runtime.log under --output.", file=sys.stderr)
@@ -75,28 +76,26 @@ def _parse_reproduce(ns: argparse.Namespace) -> int:
     log = args.output / "runtime.log"
     if log.is_file() and "Reproduced: yes" in log.read_text(encoding="utf-8", errors="replace"):
         return 0
-    work = args.output / "work"
-    if work.is_dir():
-        import json
 
-        from pbfuzz_repro.runner import verify_poc_triggered
-        from pbfuzz_repro.workspace import extract_cve_id
-
-        cve_id = extract_cve_id(
+    layout = init_layout(
+        args.output,
+        extract_cve_id(
             args.cve_description.read_text(encoding="utf-8", errors="replace")
-        )
-        meta = work / "build_info.json"
-        if meta.is_file():
-            try:
-                cve_id = json.loads(meta.read_text()).get("cve_id") or cve_id
-            except json.JSONDecodeError:
-                pass
-        ok, _ = verify_poc_triggered(work, poc, cve_id)
-        if ok:
-            return 0
+        ),
+    )
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".poc") as tmp:
+        tmp_path = Path(tmp.name)
+        tmp_path.write_bytes(poc.read_bytes())
+    crashed, _ = verify_sanitizer_crash(layout, tmp_path, 0)
+    try:
+        tmp_path.unlink(missing_ok=True)
+    except OSError:
+        pass
+    if crashed:
+        return 0
     print(
-        "Warning: poc.bin exists but oracle verification did not see 'CVE-… triggered'. "
-        "See runtime.log.",
+        "Warning: poc.bin exists but sanitizer verification did not report a crash. "
+        "See findings/sanitizer_run_*.log and runtime.log.",
         file=sys.stderr,
     )
     return 1
@@ -113,7 +112,11 @@ def main(argv: list[str] | None = None) -> int:
     repro.add_argument("--cve-description", required=True, help="Path to CVE_description.txt")
     repro.add_argument("--patch", required=True, help="Path to upstream fix.patch")
     repro.add_argument("--source", required=True, help="Path to vulnerable source git repository")
-    repro.add_argument("--output", required=True, help="Output directory for logs and poc.bin")
+    repro.add_argument(
+        "--output",
+        required=True,
+        help="Run directory: inputs/, env/, source/, findings/, and final poc.bin",
+    )
     repro.add_argument(
         "--cursor-auth-b64",
         default=None,

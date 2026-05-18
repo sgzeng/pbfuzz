@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Tuple
 
+from pbfuzz_repro.workspace import RunLayout
+
 _PBFUZZ_SRC = Path(__file__).resolve().parent.parent.parent / "pbfuzz"
 if _PBFUZZ_SRC.is_dir() and str(_PBFUZZ_SRC) not in sys.path:
     sys.path.insert(0, str(_PBFUZZ_SRC))
@@ -46,6 +48,24 @@ _KNOWN_PATH_TOOLS = frozenset(
         "nproc",
     }
 )
+
+_VALID_BUG_CLASSES = frozenset(
+    {
+        "heap-buffer-overflow",
+        "stack-buffer-overflow",
+        "integer-overflow",
+        "signed-shift",
+        "null-deref",
+        "use-after-free",
+        "uninit-memory",
+        "divide-by-zero",
+        "oob-read",
+        "oob-write",
+        "other",
+    }
+)
+
+_VALID_SANITIZERS = frozenset({"asan", "ubsan", "msan", "asan+ubsan"})
 
 
 def _first_shell_invoke_token(build_cmd: str) -> str | None:
@@ -114,9 +134,9 @@ def _parse_bbtargets(bb_path: Path) -> list[tuple[str, int, str]]:
     return out
 
 
-def validate_init(work: Path) -> Tuple[bool, str]:
-    """Validate INIT output under work/."""
-    meta_path = work / "build_info.json"
+def validate_init(layout: RunLayout) -> Tuple[bool, str]:
+    """Validate INIT output under env/ and source/."""
+    meta_path = layout.env / "build_info.json"
     if not meta_path.is_file():
         return False, f"missing {meta_path} (write build_cmd / binary_path / run_cmd)"
     try:
@@ -135,12 +155,31 @@ def validate_init(work: Path) -> Tuple[bool, str]:
     if not binary_path:
         return False, "build_info.json: binary_path is empty"
 
-    src = work / "source"
+    bug_class = (meta.get("bug_class") or "").strip()
+    if not bug_class:
+        return False, "build_info.json: bug_class is required"
+    if bug_class not in _VALID_BUG_CLASSES:
+        return False, f"build_info.json: bug_class must be one of {sorted(_VALID_BUG_CLASSES)}"
+
+    sanitizer = (meta.get("sanitizer") or "").strip().lower()
+    if not sanitizer:
+        return False, "build_info.json: sanitizer is required"
+    if sanitizer not in _VALID_SANITIZERS:
+        return False, f"build_info.json: sanitizer must be one of {sorted(_VALID_SANITIZERS)}"
+
+    san_env = meta.get("sanitizer_env")
+    if san_env is not None and not isinstance(san_env, dict):
+        return False, "build_info.json: sanitizer_env must be a JSON object"
+
+    if "-fsanitize" not in build_cmd and "fsanitize" not in build_cmd:
+        return False, "build_info.json: build_cmd must include -fsanitize=... flags"
+
+    src = layout.source
     if not src.is_dir():
         return False, f"missing vulnerable tree at {src} (run git worktree add during INIT)"
 
     src = src.resolve()
-    root = workspace_root(src, work)
+    root = workspace_root(src, layout.env)
     cwd_meta = meta.get("cwd")
     if cwd_meta is None:
         cwd_meta = ""
@@ -159,7 +198,7 @@ def validate_init(work: Path) -> Tuple[bool, str]:
             f"(checked {resolved_bin}). Run build_cmd until the binary exists."
         )
 
-    bb_path = work / "static_results" / "BBtargets.txt"
+    bb_path = layout.env / "static_results" / "BBtargets.txt"
     entries = _parse_bbtargets(bb_path)
     if not entries:
         return False, (
@@ -185,25 +224,25 @@ def validate_init(work: Path) -> Tuple[bool, str]:
     return True, ""
 
 
-def auto_insert_oracles(work: Path, cve_id: str) -> Tuple[bool, str]:
-    src = (work / "source").resolve()
-    bb_path = work / "static_results" / "BBtargets.txt"
+def auto_insert_oracles(layout: RunLayout, cve_id: str) -> Tuple[bool, str]:
+    src = layout.source.resolve()
+    bb_path = layout.env / "static_results" / "BBtargets.txt"
     entries = _parse_bbtargets(bb_path)
     if not entries:
         return False, "BBtargets.txt has no entries; cannot insert oracles."
 
     failures: list[str] = []
     for rel, ln, cond in entries:
-        result = insert_oracle_into_file(src, rel, ln, cond, cve_id, bbtargets_root=work)
+        result = insert_oracle_into_file(src, rel, ln, cond, cve_id, bbtargets_root=layout.env)
         if not result.get("ok"):
             failures.append(f"{rel}:{ln}: {result.get('error')}")
     if failures:
         return False, "insert_oracle failures: " + "; ".join(failures)
 
-    log_path = work / "output" / "last_build.log"
+    log_path = layout.findings / "last_build.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     wf = workflow_path(src)
-    root = workspace_root(src, work)
+    root = workspace_root(src, layout.env)
     rebuild = run_rebuild(root, src, wf, log_path)
     if rebuild.get("ok"):
         return True, rebuild.get("excerpt", "")[-2000:]
