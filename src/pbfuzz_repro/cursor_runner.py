@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import signal
 from pathlib import Path
+
+_active_cursor_procs: list[asyncio.subprocess.Process] = []
 
 _CURSOR_CLI_PERMISSIONS = {
     "permissions": {
@@ -26,6 +29,28 @@ _CURSOR_CLI_PERMISSIONS = {
 
 def cursor_agent_model() -> str:
     return (os.environ.get("PBFUZZ_LLM_MODEL") or os.environ.get("CURSOR_MODEL") or "").strip()
+
+
+def _register_cursor_proc(proc: asyncio.subprocess.Process) -> None:
+    _active_cursor_procs.append(proc)
+
+
+def kill_registered_cursor_procs() -> int:
+    """Kill cursor-agent subprocesses started by this driver (returns count attempted)."""
+    killed = 0
+    for proc in list(_active_cursor_procs):
+        if proc.returncode is not None:
+            continue
+        killed += 1
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+    _active_cursor_procs.clear()
+    return killed
 
 
 def ensure_cursor_cli_permissions(workspace: Path) -> Path:
@@ -63,7 +88,9 @@ async def run_iteration(workspace: Path, prompt: str, timeout: int = 3600) -> st
         cwd=str(root),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
+        start_new_session=True,
     )
+    _register_cursor_proc(proc)
     out, _ = await _communicate_with_timeout(proc, timeout)
     text = out.decode(errors="replace")
     (workspace / "cursor.log").write_text(text)
@@ -81,7 +108,10 @@ async def _communicate_with_timeout(
     try:
         return await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError as e:
-        proc.kill()
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
+            proc.kill()
         out, err = await proc.communicate()
         tail = out.decode(errors="replace")[-2000:]
         raise TimeoutError(
@@ -89,7 +119,10 @@ async def _communicate_with_timeout(
         ) from e
     except asyncio.CancelledError:
         if proc.returncode is None:
-            proc.kill()
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError, OSError):
+                proc.kill()
             try:
                 await asyncio.wait_for(proc.wait(), timeout=10)
             except (TimeoutError, asyncio.CancelledError):

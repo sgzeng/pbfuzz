@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 
+from pbfuzz_repro.run_timeout import DEFAULT_RUN_TIMEOUT_SEC, RunTimeoutError
 from pbfuzz_repro.runner import ReproArgs, run_reproduction, verify_sanitizer_crash
 from pbfuzz_repro.workspace import RunLayout, extract_cve_id, init_layout
 
@@ -53,6 +54,7 @@ def _parse_reproduce(ns: argparse.Namespace) -> int:
         init_max_attempts=ns.init_max_attempts,
         init_timeout_sec=ns.init_timeout_sec,
         inner_timeout_sec=ns.inner_timeout_sec,
+        run_timeout_sec=ns.run_timeout_sec,
     )
     for p, label in (
         (args.cve_description, "CVE description"),
@@ -69,8 +71,19 @@ def _parse_reproduce(ns: argparse.Namespace) -> int:
         return 2
 
     args.output.mkdir(parents=True, exist_ok=True)
-    poc = run_reproduction(args)
+    try:
+        poc = run_reproduction(args)
+    except RunTimeoutError as e:
+        print(str(e), file=sys.stderr)
+        return 124
     if poc is None or not poc.is_file() or poc.stat().st_size == 0:
+        log = args.output / "runtime.log"
+        if log.is_file() and "[timeout]" in log.read_text(encoding="utf-8", errors="replace"):
+            print(
+                f"Timed out after {args.run_timeout_sec}s. See runtime.log under {args.output}.",
+                file=sys.stderr,
+            )
+            return 124
         print("Failed: no poc.bin produced. See runtime.log under --output.", file=sys.stderr)
         return 1
     print(f"PoC written to {poc} ({poc.stat().st_size} bytes)")
@@ -129,6 +142,17 @@ def main(argv: list[str] | None = None) -> int:
     repro.add_argument("--init-max-attempts", type=int, default=2)
     repro.add_argument("--init-timeout", type=int, default=1200, dest="init_timeout_sec")
     repro.add_argument("--inner-timeout", type=int, default=1800, dest="inner_timeout_sec")
+    repro.add_argument(
+        "--timeout",
+        type=int,
+        default=DEFAULT_RUN_TIMEOUT_SEC,
+        dest="run_timeout_sec",
+        metavar="SEC",
+        help=(
+            "Wall-clock limit for the entire reproduce run (default: 1800 = 30 min). "
+            "On expiry, logs are saved and cursor-agent processes for this run are killed."
+        ),
+    )
     repro.set_defaults(func=_parse_reproduce)
 
     ns = parser.parse_args(argv)

@@ -122,8 +122,19 @@ The driver appends a **Resolved paths** block below with absolute paths for:
 
 ## Failure feedback
 
-If the driver rejects your output, a **Previous attempt feedback** block is appended below;
-address those points and retry.
+If the driver rejects your output, a **Previous attempt feedback** block is appended below.
+It is a structured diagnostic (Outcome, Observed evidence, Likely failure categories, Next INIT actions).
+
+**Before changing anything**, classify the failure:
+1. Read the feedback sections and decide which categories apply (oracle too broad, wrong placement,
+   sanitizer mismatch, incomplete run_cmd, wrong vulnerable ref, build/env issue, or input-space gap).
+2. Choose the **minimal** INIT-side fix that addresses the diagnosed category. Do not blindly rotate
+   sanitizer or rewrite BBtargets without evidence.
+3. You may change: vulnerable git ref, `build_cmd`, `run_cmd`, `bug_class`, `sanitizer`,
+   `sanitizer_env`, and `BBtargets.txt` (line + `condition_expr`). Do not fuzz or write PoCs here.
+4. State in your final `INIT done:` line which failure category you chose and what you changed.
+
+Address the feedback directly and retry.
 """
 
 INIT_PROMPT_NO_PATCH = """You are the **INIT** agent for standalone CVE bug reproduction with PBFuzz.
@@ -225,8 +236,19 @@ The driver appends a **Resolved paths** block below with absolute paths for:
 
 ## Failure feedback
 
-If the driver rejects your output, a **Previous attempt feedback** block is appended below;
-address those points and retry.
+If the driver rejects your output, a **Previous attempt feedback** block is appended below.
+It is a structured diagnostic (Outcome, Observed evidence, Likely failure categories, Next INIT actions).
+
+**Before changing anything**, classify the failure:
+1. Read the feedback sections and decide which categories apply (oracle too broad, wrong placement,
+   sanitizer mismatch, incomplete run_cmd, wrong vulnerable ref, build/env issue, or input-space gap).
+2. Choose the **minimal** INIT-side fix that addresses the diagnosed category. Do not blindly rotate
+   sanitizer or rewrite BBtargets without evidence.
+3. You may change: vulnerable git ref, `build_cmd`, `run_cmd`, `bug_class`, `sanitizer`,
+   `sanitizer_env`, and `BBtargets.txt` (line + `condition_expr`). Do not fuzz or write PoCs here.
+4. State in your final `INIT done:` line which failure category you chose and what you changed.
+
+Address the feedback directly and retry.
 """
 
 PIER_APPENDIX = """
@@ -259,7 +281,8 @@ def build_init_prompt(
     if last_feedback:
         feedback_block = (
             "\n\n## Previous attempt feedback\n"
-            f"The driver rejected your previous INIT output:\n\n> {last_feedback}\n\n"
-            "Address it directly and retry.\n"
+            f"The driver rejected your previous INIT output:\n\n{last_feedback}\n\n"
+            "Classify the failure using the sections above, apply a minimal targeted fix, "
+            "and retry.\n"
         )
     return base + paths_block + feedback_block

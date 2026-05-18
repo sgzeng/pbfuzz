@@ -4,22 +4,21 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import re
 import shutil
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 from pbfuzz_repro import cursor_runner, init_check, logs, pbfuzz_env, workspace
 from pbfuzz_repro.prompts import PIER_APPENDIX, build_init_prompt
-from pbfuzz_repro.workspace import RunLayout
-
-_ASAN_RE = re.compile(
-    r"==\d+==ERROR: (AddressSanitizer|UndefinedBehaviorSanitizer|MemorySanitizer|LeakSanitizer):"
+from pbfuzz_repro.run_timeout import DEFAULT_RUN_TIMEOUT_SEC, RunTimeoutError, run_with_timeout
+from pbfuzz_repro.verification import (
+    FailureKind,
+    VerificationResult,
+    build_init_retry_feedback,
+    build_pier_no_oracle_feedback,
+    verify_poc,
 )
-_UBSAN_RUNTIME_RE = re.compile(r"runtime error:", re.IGNORECASE)
-_CRASH_EXIT_CODES = frozenset({1, 134, -6, -11})
+from pbfuzz_repro.workspace import RunLayout
 
 
 @dataclass
@@ -33,6 +32,7 @@ class ReproArgs:
     init_max_attempts: int = 2
     init_timeout_sec: int = 1200
     inner_timeout_sec: int = 1800
+    run_timeout_sec: int = DEFAULT_RUN_TIMEOUT_SEC
 
 
 def _load_build_meta(layout: RunLayout) -> dict:
@@ -80,58 +80,15 @@ def verify_sanitizer_crash(
     layout: RunLayout, poc_path: Path, outer_round: int
 ) -> tuple[bool, str]:
     """Run PoC on the built binary; success only on sanitizer crash output."""
-    meta = _load_build_meta(layout)
-    args = _build_run_argv(layout, poc_path, meta)
-    if not args:
-        return False, "no run_cmd in build_info.json"
-
-    env = os.environ.copy()
-    san_env = meta.get("sanitizer_env")
-    if isinstance(san_env, dict):
-        for k, v in san_env.items():
-            if isinstance(k, str) and v is not None:
-                env[str(k)] = str(v)
-
-    log_path = layout.findings / f"sanitizer_run_{outer_round}.log"
-    try:
-        proc = subprocess.run(
-            args,
-            cwd=str(layout.source.resolve()),
-            capture_output=True,
-            text=True,
-            timeout=int(os.environ.get("EXEC_TIMEOUT_SEC", "60")),
-            env=env,
-        )
-    except subprocess.TimeoutExpired:
-        log_path.write_text("verification run timed out\n", encoding="utf-8")
-        return False, "verification run timed out"
-    except OSError as e:
-        log_path.write_text(f"verification run failed: {e}\n", encoding="utf-8")
-        return False, f"verification run failed: {e}"
-
-    combined = (proc.stdout or "") + (proc.stderr or "")
-    log_path.write_text(
-        f"exit_code={proc.returncode}\n"
-        f"argv={args!r}\n"
-        f"--- output ---\n{combined}",
-        encoding="utf-8",
+    result = verify_poc(
+        layout,
+        poc_path,
+        outer_round,
+        build_run_argv=_build_run_argv,
+        load_build_meta=_load_build_meta,
+        cve_id=_load_cve_id(layout, ""),
     )
-
-    crashed = False
-    if _ASAN_RE.search(combined):
-        crashed = True
-    elif _UBSAN_RUNTIME_RE.search(combined) and "SUMMARY: UndefinedBehaviorSanitizer" in combined:
-        crashed = True
-    elif proc.returncode in _CRASH_EXIT_CODES and "SUMMARY:" in combined:
-        crashed = True
-    elif re.search(
-        r"AddressSanitizer:|heap-buffer-overflow|SEGV|ABRT", combined, re.IGNORECASE
-    ):
-        crashed = True
-    elif "runtime error: signed integer overflow" in combined.lower():
-        crashed = True
-
-    return crashed, combined[-2000:]
+    return result.crashed, result.excerpt
 
 
 async def _run_init_phase(
@@ -157,7 +114,11 @@ async def _run_init_phase(
             workspace.copy_init_agent_log(layout, attempt)
         except Exception as e:  # noqa: BLE001
             logs.append_error(output_dir, f"init.attempt.{attempt}", e)
-            feedback = f"INIT cursor-agent raised: {e}"
+            feedback = build_init_retry_feedback(
+                failure_kind=FailureKind.INIT_FAILED,
+                meta=_load_build_meta(layout),
+                extra_context=f"INIT cursor-agent raised: {e}",
+            )
             continue
 
         ok, reason = init_check.validate_init(layout)
@@ -175,7 +136,11 @@ async def _run_init_phase(
                 f"init.meta bug_class={meta.get('bug_class')!r} sanitizer={meta.get('sanitizer')!r}",
             )
             return oracle_ok
-        feedback = reason
+        feedback = build_init_retry_feedback(
+            failure_kind=FailureKind.INIT_FAILED,
+            meta=_load_build_meta(layout),
+            extra_context=reason,
+        )
 
     return False
 
@@ -229,6 +194,13 @@ async def _run_inner_pier(args: ReproArgs, layout: RunLayout, cve_id: str, outer
     return False, None
 
 
+def _read_bb_text(layout: RunLayout) -> str:
+    bb_path = layout.env / "static_results" / "BBtargets.txt"
+    if bb_path.is_file():
+        return bb_path.read_text(encoding="utf-8", errors="replace")[:1500]
+    return ""
+
+
 async def run_reproduction_async(args: ReproArgs) -> Path | None:
     args.output.mkdir(parents=True, exist_ok=True)
     patch_available = args.patch is not None
@@ -245,44 +217,50 @@ async def run_reproduction_async(args: ReproArgs) -> Path | None:
 
         init_ok = await _run_init_phase(args, layout, cve_id, last_feedback=last_feedback)
         if not init_ok:
-            last_feedback = "INIT phase failed; check env/build_info.json and env/init_agent_*.log"
+            last_feedback = build_init_retry_feedback(
+                failure_kind=FailureKind.INIT_FAILED,
+                meta=_load_build_meta(layout),
+                bb_text=_read_bb_text(layout),
+                extra_context="INIT phase failed; check env/build_info.json and env/init_agent_*.log",
+            )
             logs.append_runtime(args.output, f"outer.{outer}.init_failed")
             continue
 
         cve_id = _load_cve_id(layout, cve_id)
         pier_ok, candidate_path = await _run_inner_pier(args, layout, cve_id, outer)
+        meta = _load_build_meta(layout)
+        bb_text = _read_bb_text(layout)
+
         if not pier_ok or candidate_path is None:
-            last_feedback = (
-                "PIER loop exhausted without oracle trigger. "
-                "Refine bug_class, sanitizer, BBtargets, or run_cmd."
-            )
+            last_feedback = build_pier_no_oracle_feedback(meta, bb_text)
             continue
 
-        crashed, excerpt = verify_sanitizer_crash(layout, candidate_path, outer)
+        verification: VerificationResult = verify_poc(
+            layout,
+            candidate_path,
+            outer,
+            build_run_argv=_build_run_argv,
+            load_build_meta=_load_build_meta,
+            cve_id=cve_id,
+        )
 
         logs.append_runtime(
             args.output,
-            f"outer.{outer}.sanitizer crashed={crashed} excerpt_tail={excerpt[-500:]!r}",
+            f"outer.{outer}.sanitizer crashed={verification.crashed} "
+            f"excerpt_tail={verification.excerpt[-500:]!r}",
         )
 
-        if crashed:
+        if verification.crashed:
             poc_out = args.output / "poc.bin"
             shutil.copy2(candidate_path, poc_out)
             logs.append_runtime(args.output, f"Reproduced: yes ({cve_id})")
             return poc_out
 
-        meta = _load_build_meta(layout)
-        bb_text = ""
-        bb_path = layout.env / "static_results" / "BBtargets.txt"
-        if bb_path.is_file():
-            bb_text = bb_path.read_text(encoding="utf-8", errors="replace")[:1500]
-        poc_size = candidate_path.stat().st_size
-        last_feedback = (
-            f"Oracle triggered but sanitizer {meta.get('sanitizer')!r} did NOT crash.\n"
-            f"PoC size={poc_size} bytes. Runtime output tail:\n{excerpt}\n"
-            f"Previous bug_class={meta.get('bug_class')!r}, sanitizer={meta.get('sanitizer')!r}\n"
-            f"BBtargets:\n{bb_text}\n"
-            "Re-classify the vulnerability, pick a different sanitizer/ref/oracle, and rebuild."
+        last_feedback = build_init_retry_feedback(
+            failure_kind=FailureKind.ORACLE_TRIGGERED_NO_SANITIZER,
+            meta=meta,
+            bb_text=bb_text,
+            verification=verification,
         )
 
     logs.append_runtime(args.output, "no PoC produced")
@@ -290,4 +268,11 @@ async def run_reproduction_async(args: ReproArgs) -> Path | None:
 
 
 def run_reproduction(args: ReproArgs) -> Path | None:
-    return asyncio.run(run_reproduction_async(args))
+    async def _run() -> Path | None:
+        return await run_with_timeout(
+            run_reproduction_async(args),
+            timeout_sec=args.run_timeout_sec,
+            run_root=args.output,
+        )
+
+    return asyncio.run(_run())

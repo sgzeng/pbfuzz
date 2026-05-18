@@ -28,8 +28,11 @@ uv run pbfuzz reproduce \
   --output          /path/to/run-output \
   --model           gemini-2.5-pro \
   --max-outer-rounds 2 \
-  --max-inner-iter 10
+  --max-inner-iter 10 \
+  [--timeout         1800]
 ```
+
+`--timeout` is the wall-clock limit for the whole run in seconds (default **1800**, 30 minutes). When it expires, the driver writes a `[timeout]` line to `runtime.log`, syncs partial agent logs, kills `cursor-agent` processes tied to that run directory, and exits.
 
 **Inputs**
 
@@ -115,7 +118,8 @@ uv run pbfuzz reproduce \
 | `PBFUZZ_LLM_MODEL` / `CURSOR_MODEL` | Model for cursor-agent |
 | `MAX_INNER_ITER` | Fuzz iterations per round (default 10) |
 | `MAX_OUTER_ROUNDS` | Outer driver rounds (CLI flag) |
-| `INIT_TIMEOUT_SEC` / `INNER_TIMEOUT_SEC` | Timeouts (CLI flags) |
+| `INIT_TIMEOUT_SEC` / `INNER_TIMEOUT_SEC` | Per INIT / inner-agent timeouts (CLI flags) |
+| `--timeout` | Whole-run wall-clock limit in seconds (default 1800); kills cursor-agent on expiry |
 | `EXEC_TIMEOUT_SEC` | Per-execution timeout for fuzzer (default 5) |
 | `PBFUZZ_HOME` | Path to embedded `pbfuzz/` package |
 | `LLDB_PATH` | Debugger binary (default `/usr/bin/lldb-20`) |
