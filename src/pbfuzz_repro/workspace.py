@@ -46,17 +46,20 @@ def extract_cve_id(text: str) -> str:
     return "CVE-UNKNOWN"
 
 
-def write_inputs(output_dir: Path, cve_desc_path: Path, patch_path: Path) -> str:
+def write_inputs(
+    output_dir: Path, cve_desc_path: Path, patch_path: Path | None
+) -> str:
     """Copy user inputs into output_dir/inputs/; return extracted cve_id."""
     inputs = output_dir / "inputs"
     inputs.mkdir(parents=True, exist_ok=True)
     desc_text = cve_desc_path.read_text(encoding="utf-8", errors="replace")
     shutil.copy2(cve_desc_path, inputs / "CVE_description.txt")
-    shutil.copy2(patch_path, inputs / "fix.patch")
+    if patch_path is not None:
+        shutil.copy2(patch_path, inputs / "fix.patch")
     return extract_cve_id(desc_text)
 
 
-def compose_task_md(output_dir: Path, cve_id: str) -> None:
+def compose_task_md(output_dir: Path, cve_id: str, *, patch_available: bool = True) -> None:
     desc = (output_dir / "inputs" / "CVE_description.txt").read_text(
         encoding="utf-8", errors="replace"
     )
@@ -80,15 +83,27 @@ def compose_task_md(output_dir: Path, cve_id: str) -> None:
             "\n## FFmpeg sbgdec hint\n\n"
             "SBG demuxer bugs often use **ffmpeg** with `-f sbg` and a crafted text/script input.\n"
         )
+    if patch_available:
+        inputs_section = (
+            "## Inputs\n\n"
+            "- `inputs/CVE_description.txt`\n"
+            "- `inputs/fix.patch` (upstream fix; derive BBtargets and condition_expr from this)\n"
+        )
+        oracle_note = ""
+    else:
+        inputs_section = "## Inputs\n\n- `inputs/CVE_description.txt`\n"
+        oracle_note = (
+            "INIT derives Target Locations and oracle conditions from the CVE description "
+            "and source analysis (no fix patch provided).\n"
+        )
     body = (
         f"# CVE Reproduction: {cve_id}\n\n"
         f"## Description\n\n{desc.strip()}\n\n"
-        "## Inputs\n\n"
-        "- `inputs/CVE_description.txt`\n"
-        "- `inputs/fix.patch` (upstream fix; derive BBtargets and condition_expr from this)\n"
+        f"{inputs_section}"
         f"{hints}\n"
         "## Goal\n\n"
         "Produce a PoC input that triggers the vulnerability on the vulnerable build.\n"
+        f"{oracle_note}"
         "The inner fuzz loop succeeds when the oracle prints `{cve_id} triggered`.\n"
         "The driver promotes a PoC only after a **sanitizer crash** on the built binary.\n"
         "Inner agent writes `findings/candidate_poc.bin` and `findings/CANDIDATE_READY`.\n"
@@ -107,7 +122,7 @@ def init_layout(output_dir: Path, cve_id: str) -> RunLayout:
     bb = static_dir / "BBtargets.txt"
     if not bb.is_file() or bb.stat().st_size == 0:
         bb.write_text(
-            "# placeholder; INIT must overwrite from inputs/fix.patch\n"
+            "# placeholder; INIT must overwrite with Target Locations\n"
             "# format: relative/path.c:LINE[,condition_expr]\n",
             encoding="utf-8",
         )

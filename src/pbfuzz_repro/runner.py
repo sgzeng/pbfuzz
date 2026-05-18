@@ -25,7 +25,7 @@ _CRASH_EXIT_CODES = frozenset({1, 134, -6, -11})
 @dataclass
 class ReproArgs:
     cve_description: Path
-    patch: Path
+    patch: Path | None
     source: Path
     output: Path
     max_outer_rounds: int = 2
@@ -147,6 +147,7 @@ async def _run_init_phase(
         prompt = build_init_prompt(
             source_repo=source_repo,
             layout=layout,
+            patch_available=args.patch is not None,
             last_feedback=feedback,
         )
         try:
@@ -186,7 +187,9 @@ async def _run_inner_pier(args: ReproArgs, layout: RunLayout, cve_id: str, outer
     logs.append_runtime(output_dir, f"outer.{outer}.pier.start")
     workspace.clear_candidate_marker(layout)
     cve_id = _load_cve_id(layout, cve_id)
-    cfg_path = pbfuzz_env.write_launcher_config(layout, cve_id)
+    cfg_path = pbfuzz_env.write_launcher_config(
+        layout, cve_id, patch_available=args.patch is not None
+    )
     try:
         rc = await pbfuzz_env.run_launcher(cfg_path, output_dir=output_dir)
     except Exception as e:  # noqa: BLE001
@@ -228,8 +231,9 @@ async def _run_inner_pier(args: ReproArgs, layout: RunLayout, cve_id: str, outer
 
 async def run_reproduction_async(args: ReproArgs) -> Path | None:
     args.output.mkdir(parents=True, exist_ok=True)
+    patch_available = args.patch is not None
     cve_id = workspace.write_inputs(args.output, args.cve_description, args.patch)
-    workspace.compose_task_md(args.output, cve_id)
+    workspace.compose_task_md(args.output, cve_id, patch_available=patch_available)
     layout = workspace.init_layout(args.output, cve_id)
 
     logs.append_runtime(args.output, f"start cve_id={cve_id} source={args.source}")

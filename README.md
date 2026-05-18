@@ -1,6 +1,6 @@
 # PBFuzz
 
-Agentic directed fuzzing for **CVE bug reproduction**. Given a CVE description, an upstream **fix patch**, and a source repository, PBFuzz builds the vulnerable revision, instruments reach/trigger oracles, and runs a **PLAN → IMPLEMENT → EXECUTE → REFLECT** loop (via [cursor-agent](https://cursor.com/cli) and MCP tools) to produce a PoC input.
+Agentic directed fuzzing for **CVE bug reproduction**. Given a CVE description, an optional upstream **fix patch**, and a source repository, PBFuzz builds the vulnerable revision, instruments reach/trigger oracles, and runs a **PLAN → IMPLEMENT → EXECUTE → REFLECT** loop (via [cursor-agent](https://cursor.com/cli) and MCP tools) to produce a PoC input.
 
 ## Requirements
 
@@ -23,7 +23,7 @@ export CURSOR_AUTH="$(base64 -w0 < ~/.config/cursor/auth.json)"   # optional if 
 
 uv run pbfuzz reproduce \
   --cve-description /path/to/CVE_description.txt \
-  --patch           /path/to/fix.patch \
+  [--patch           /path/to/fix.patch] \
   --source          /path/to/git-repo \
   --output          /path/to/run-output \
   --model           gemini-2.5-pro \
@@ -36,7 +36,7 @@ uv run pbfuzz reproduce \
 | Flag | Meaning |
 |------|---------|
 | `--cve-description` | Text file with CVE id and description |
-| `--patch` | Upstream fix patch (unified diff); used to derive target lines and trigger conditions |
+| `--patch` | *(optional)* Upstream fix patch (unified diff); when provided, INIT derives target lines and trigger conditions from the patch. When omitted, INIT infers oracles from the CVE description and source analysis only |
 | `--source` | Git repository root (INIT agent creates `<run>/source` via `git worktree`) |
 | `--output` | Run directory: `inputs/`, `env/`, `source/`, `findings/`, and final `poc.bin` |
 
@@ -56,7 +56,7 @@ uv run pbfuzz reproduce \
 
   inputs/
     CVE_description.txt              # user input
-    fix.patch                        # user input
+    fix.patch                        # user input (optional; omitted when --patch not passed)
 
   source/                            # shared build tree (INIT creates; inner agent edits)
     .cursor/

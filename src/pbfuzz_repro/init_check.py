@@ -203,7 +203,7 @@ def validate_init(layout: RunLayout) -> Tuple[bool, str]:
     if not entries:
         return False, (
             f"{bb_path} has no usable entries. Write at least one line of form "
-            f"'relative/path.c:LINE[,condition_expr]' derived from inputs/fix.patch."
+            f"'relative/path.c:LINE[,condition_expr]' (from fix patch or CVE/source analysis)."
         )
     valid = []
     invalid_reasons: list[str] = []

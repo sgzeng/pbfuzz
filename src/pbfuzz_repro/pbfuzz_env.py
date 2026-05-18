@@ -25,7 +25,9 @@ def _default_pbfuzz_home() -> Path:
 _PBFUZZ = Path(os.environ.get("PBFUZZ_HOME") or _default_pbfuzz_home()).resolve()
 
 
-def build_launcher_dict(layout: RunLayout, cve_id: str) -> dict[str, Any]:
+def build_launcher_dict(
+    layout: RunLayout, cve_id: str, *, patch_available: bool = True
+) -> dict[str, Any]:
     meta_path = layout.env / "build_info.json"
     meta: dict[str, Any] = {}
     if meta_path.is_file():
@@ -62,6 +64,7 @@ def build_launcher_dict(layout: RunLayout, cve_id: str) -> dict[str, Any]:
         "bug_class": meta.get("bug_class", ""),
         "sanitizer": meta.get("sanitizer", ""),
         "sanitizer_env": meta.get("sanitizer_env") or {},
+        "patch_available": patch_available,
     }
 
 
@@ -86,8 +89,10 @@ async def run_launcher(config_path: Path, output_dir: Path | None = None) -> int
     return rc
 
 
-def write_launcher_config(layout: RunLayout, cve_id: str) -> Path:
-    cfg = build_launcher_dict(layout, cve_id)
+def write_launcher_config(
+    layout: RunLayout, cve_id: str, *, patch_available: bool = True
+) -> Path:
+    cfg = build_launcher_dict(layout, cve_id, patch_available=patch_available)
     path = layout.findings / "launcher.json"
     path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     return path

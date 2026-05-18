@@ -45,7 +45,7 @@ def _parse_reproduce(ns: argparse.Namespace) -> int:
 
     args = ReproArgs(
         cve_description=Path(ns.cve_description).resolve(),
-        patch=Path(ns.patch).resolve(),
+        patch=Path(ns.patch).resolve() if ns.patch else None,
         source=Path(ns.source).resolve(),
         output=Path(ns.output).resolve(),
         max_outer_rounds=ns.max_outer_rounds,
@@ -59,6 +59,8 @@ def _parse_reproduce(ns: argparse.Namespace) -> int:
         (args.patch, "patch"),
         (args.source, "source"),
     ):
+        if p is None:
+            continue
         if not p.is_file() and not (label == "source" and p.is_dir()):
             print(f"{label} not found: {p}", file=sys.stderr)
             return 2
@@ -100,9 +102,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    repro = sub.add_parser("reproduce", help="Reproduce a CVE from description + fix patch")
+    repro = sub.add_parser(
+        "reproduce",
+        help="Reproduce a CVE from description (optionally with fix patch)",
+    )
     repro.add_argument("--cve-description", required=True, help="Path to CVE_description.txt")
-    repro.add_argument("--patch", required=True, help="Path to upstream fix.patch")
+    repro.add_argument(
+        "--patch",
+        default=None,
+        help="Optional path to upstream fix.patch (oracle targets derived from patch when set)",
+    )
     repro.add_argument("--source", required=True, help="Path to vulnerable source git repository")
     repro.add_argument(
         "--output",

@@ -320,6 +320,23 @@ def create_workflow_files(config, fuzzer_config=None):
     template_path = template_dir / "workflow_state.md"
     if template_path.exists():
         shutil.copy2(template_path, workflow_state_path)
+        if not getattr(config, "patch_available", True):
+            text = workflow_state_path.read_text(encoding="utf-8")
+            text = (
+                text.replace(
+                    "source analysis, `inputs/fix.patch`, CVE description",
+                    "source analysis and the CVE description",
+                )
+                .replace(
+                    "BBtargets.txt + fix.patch",
+                    "BBtargets.txt + CVE description",
+                )
+                .replace(
+                    "Read BBtargets.txt and inputs/fix.patch",
+                    "Read BBtargets.txt and inputs/CVE_description.txt",
+                )
+            )
+            workflow_state_path.write_text(text, encoding="utf-8")
         print(f"✓ Created workflow state: {workflow_state_path}")
     else:
         print(f"⚠️ Template not found: {template_path}")

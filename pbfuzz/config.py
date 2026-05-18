@@ -158,3 +158,4 @@ class Config:
         self.run_cmd_template = ""
         self.build_cwd = ""
         self.cybergym_cwd = ""
+        self.patch_available = True
