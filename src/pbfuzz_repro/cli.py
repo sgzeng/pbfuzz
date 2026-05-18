@@ -55,6 +55,7 @@ def _parse_reproduce(ns: argparse.Namespace) -> int:
         init_timeout_sec=ns.init_timeout_sec,
         inner_timeout_sec=ns.inner_timeout_sec,
         run_timeout_sec=ns.run_timeout_sec,
+        hint_enabled=ns.hint_enabled,
     )
     for p, label in (
         (args.cve_description, "CVE description"),
@@ -151,6 +152,15 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "Wall-clock limit for the entire reproduce run (default: 1800 = 30 min). "
             "On expiry, logs are saved and cursor-agent processes for this run are killed."
+        ),
+    )
+    repro.add_argument(
+        "--hint-enabled",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Include CVE-specific hints in TASK.md and INIT prompts inferred from the "
+            "description (default: enabled). Use --no-hint-enabled for a closed-book run."
         ),
     )
     repro.set_defaults(func=_parse_reproduce)

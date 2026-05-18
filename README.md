@@ -26,10 +26,11 @@ uv run pbfuzz reproduce \
   [--patch           /path/to/fix.patch] \
   --source          /path/to/git-repo \
   --output          /path/to/run-output \
-  --model           gemini-2.5-pro \
+  --model           claude-4.6-sonnet-medium \
   --max-outer-rounds 2 \
   --max-inner-iter 10 \
-  [--timeout         1800]
+  [--timeout         1800] \
+  [--hint-enabled | --no-hint-enabled]
 ```
 
 `--timeout` is the wall-clock limit for the whole run in seconds (default **1800**, 30 minutes). When it expires, the driver writes a `[timeout]` line to `runtime.log`, syncs partial agent logs, kills `cursor-agent` processes tied to that run directory, and exits.
@@ -42,6 +43,7 @@ uv run pbfuzz reproduce \
 | `--patch` | *(optional)* Upstream fix patch (unified diff); when provided, INIT derives target lines and trigger conditions from the patch. When omitted, INIT infers oracles from the CVE description and source analysis only |
 | `--source` | Git repository root (INIT agent creates `<run>/source` via `git worktree`) |
 | `--output` | Run directory: `inputs/`, `env/`, `source/`, `findings/`, and final `poc.bin` |
+| `--hint-enabled` / `--no-hint-enabled` | Include CVE-specific TASK.md / INIT hints inferred from the description (default: **enabled**) |
 
 **Success** — `poc.bin` is written and the built binary aborts with a sanitizer report (ASan/UBSan/MSan) when fed the PoC.
 

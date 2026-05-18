@@ -81,7 +81,8 @@ The driver appends a **Resolved paths** block below with absolute paths for:
      "sanitizer_env": {
        "ASAN_OPTIONS": "abort_on_error=1:detect_leaks=0:symbolize=1",
        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
-     }
+     },
+     "exec_timeout_sec": 120
    }
    ```
    `@@` in `run_cmd` is the input-file placeholder.
@@ -192,7 +193,8 @@ The driver appends a **Resolved paths** block below with absolute paths for:
      "sanitizer_env": {
        "ASAN_OPTIONS": "abort_on_error=1:detect_leaks=0:symbolize=1",
        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
-     }
+     },
+     "exec_timeout_sec": 120
    }
    ```
    `@@` in `run_cmd` is the input-file placeholder.
@@ -251,6 +253,16 @@ It is a structured diagnostic (Outcome, Observed evidence, Likely failure catego
 Address the feedback directly and retry.
 """
 
+INIT_OPTIONAL_HINTS = """
+   Set **`exec_timeout_sec`** to at least **600** when the PoC is a multi-hundred-MB or GB
+   sequential media file. Default **120** for small inputs.
+
+   **FFmpeg run_cmd examples** (derive from CVE + fix patch):
+   - CENC/MOV: `ffprobe -decryption_key <32-hex-zeros-ok> -show_packets @@`
+   - AV1 IVF: `ffprobe -f ivf @@` or `ffmpeg -i @@ -f null -`
+   - DVD/MPEG-PS subtitle: `ffprobe -show_packets @@` (large ~2 GB inputs need long timeout)
+"""
+
 PIER_APPENDIX = """
 
 ## Driver constraint (inner PIER loop)
@@ -267,8 +279,17 @@ def build_init_prompt(
     layout: RunLayout,
     patch_available: bool,
     last_feedback: str = "",
+    hint_enabled: bool = True,
 ) -> str:
     base = INIT_PROMPT_WITH_PATCH if patch_available else INIT_PROMPT_NO_PATCH
+    if hint_enabled:
+        base = base.replace(
+            "   **`build_cmd` must succeed** when run with `cwd` as documented.\n",
+            "   **`build_cmd` must succeed** when run with `cwd` as documented.\n"
+            + INIT_OPTIONAL_HINTS
+            + "\n",
+            1,
+        )
     paths_block = (
         "\n\n## Resolved paths\n"
         f"- **Source repository** (git root): `{source_repo.resolve()}`\n"

@@ -1086,12 +1086,6 @@ class PropertyBasedFuzzer:
         if breakpoints is None:
             breakpoints = []
         
-        # Debugger adds significant overhead (500-1000ms), so we need more time
-        exec_timeout = self.timeout_s
-        if from_batch_plan and breakpoints and self.debugger_instance:
-            # Phase 1 with debugger: use 3x timeout, minimum 3 seconds
-            exec_timeout = max(3.0, self.timeout_s * 3)
-            
         try:
             # Use timeout wrapper to call generator function
             generator_timeout = getattr(self, 'generator_timeout_sec', 2)
@@ -1152,6 +1146,15 @@ class PropertyBasedFuzzer:
 
         testcase = workdir / "cur_testcase"
         testcase.write_bytes(data)
+
+        from sanitizer_detect import exec_timeout_for_input_size, sanitizer_crash_detected
+
+        exec_timeout = exec_timeout_for_input_size(
+            float(self.timeout_s) if self.timeout_s else 5.0,
+            len(data),
+        )
+        if from_batch_plan and breakpoints and self.debugger_instance:
+            exec_timeout = max(exec_timeout, max(3.0, float(self.timeout_s) * 3))
 
         start = time.time()
         timeout, exit_code, stderr = False, 0, ""
@@ -1231,8 +1234,13 @@ class PropertyBasedFuzzer:
         dur_ms = int((time.time()-start)*1000)
         reached, triggered = 0, 0
         if not timeout and stderr:
-            if self.reached_pat.search(stderr): reached = 1
-            if self.triggered_pat.search(stderr): triggered = 1
+            if self.reached_pat.search(stderr):
+                reached = 1
+            if self.triggered_pat.search(stderr):
+                triggered = 1
+            # Oracle "triggered" must coincide with sanitizer-visible failure for PoC promotion.
+            if triggered and not sanitizer_crash_detected(stderr, exit_code):
+                triggered = 0
 
         # Determine current phase based on from_batch_plan
         current_phase = "phase1" if from_batch_plan else "phase2"

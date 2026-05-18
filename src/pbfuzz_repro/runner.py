@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +34,7 @@ class ReproArgs:
     init_timeout_sec: int = 1200
     inner_timeout_sec: int = 1800
     run_timeout_sec: int = DEFAULT_RUN_TIMEOUT_SEC
+    hint_enabled: bool = True
 
 
 def _load_build_meta(layout: RunLayout) -> dict:
@@ -106,6 +108,7 @@ async def _run_init_phase(
             layout=layout,
             patch_available=args.patch is not None,
             last_feedback=feedback,
+            hint_enabled=args.hint_enabled,
         )
         try:
             await cursor_runner.run_iteration(
@@ -125,6 +128,10 @@ async def _run_init_phase(
         logs.append_runtime(output_dir, f"init.attempt.{attempt}.validate ok={ok} reason={reason!r}")
         if ok:
             cve_id = _load_cve_id(layout, cve_id)
+            if init_check.normalize_sanitizer_build(layout):
+                logs.append_runtime(
+                    output_dir, "init.normalized_sanitizer asan+ubsan for ubsan-required bug_class"
+                )
             oracle_ok, oracle_log = init_check.auto_insert_oracles(layout, cve_id)
             logs.append_runtime(
                 output_dir,
@@ -201,11 +208,79 @@ def _read_bb_text(layout: RunLayout) -> str:
     return ""
 
 
+def _collect_poc_candidates(layout: RunLayout) -> list[Path]:
+    """Ordered PoC paths to try when promoting a verified crash (newest first)."""
+    findings = layout.findings
+    ordered: list[Path] = []
+
+    def _add(path: Path) -> None:
+        if path.is_file() and path.stat().st_size > 0:
+            ordered.append(path)
+
+    _add(findings / "candidate_poc.bin")
+    tc_dir = findings / "testcases"
+    if tc_dir.is_dir():
+        triggered = sorted(
+            tc_dir.glob("*_triggered"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for p in triggered:
+            _add(p)
+    crash_dir = findings / "crashes"
+    if crash_dir.is_dir():
+        crashes = sorted(
+            crash_dir.glob("poc_*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for p in crashes:
+            _add(p)
+
+    seen: set[str] = set()
+    unique: list[Path] = []
+    for p in ordered:
+        key = str(p.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(p)
+    return unique
+
+
+def try_promote_verified_poc(
+    layout: RunLayout, output_dir: Path, outer_round: int, cve_id: str
+) -> Path | None:
+    """Verify collected fuzz artifacts and write poc.bin on first sanitizer crash."""
+    for poc_path in _collect_poc_candidates(layout):
+        verification = verify_poc(
+            layout,
+            poc_path,
+            outer_round,
+            build_run_argv=_build_run_argv,
+            load_build_meta=_load_build_meta,
+            cve_id=cve_id,
+        )
+        if not verification.crashed:
+            continue
+        poc_out = output_dir / "poc.bin"
+        shutil.copy2(poc_path, poc_out)
+        logs.append_runtime(
+            output_dir,
+            f"Reproduced: yes ({cve_id}) promoted from {poc_path.relative_to(layout.findings)}",
+        )
+        return poc_out
+    return None
+
+
 async def run_reproduction_async(args: ReproArgs) -> Path | None:
     args.output.mkdir(parents=True, exist_ok=True)
+    os.environ["PBFUZZ_HINT_ENABLED"] = "1" if args.hint_enabled else "0"
     patch_available = args.patch is not None
     cve_id = workspace.write_inputs(args.output, args.cve_description, args.patch)
-    workspace.compose_task_md(args.output, cve_id, patch_available=patch_available)
+    workspace.compose_task_md(
+        args.output, cve_id, patch_available=patch_available, hint_enabled=args.hint_enabled
+    )
     layout = workspace.init_layout(args.output, cve_id)
 
     logs.append_runtime(args.output, f"start cve_id={cve_id} source={args.source}")
@@ -263,8 +338,23 @@ async def run_reproduction_async(args: ReproArgs) -> Path | None:
             verification=verification,
         )
 
-    logs.append_runtime(args.output, "no PoC produced")
+    logs.append_runtime(args.output, "no PoC produced; scanning triggered artifacts")
+    cve_id = _load_cve_id(layout, cve_id)
+    promoted = try_promote_verified_poc(layout, args.output, args.max_outer_rounds, cve_id)
+    if promoted is not None:
+        return promoted
+    logs.append_runtime(args.output, "no verified PoC among collected artifacts")
     return None
+
+
+def _promote_on_timeout(args: ReproArgs) -> None:
+    """Best-effort poc.bin promotion when the outer wall-clock limit fires."""
+    desc = args.cve_description.read_text(encoding="utf-8", errors="replace")
+    cve_id = workspace.extract_cve_id(desc)
+    layout = workspace.init_layout(args.output, cve_id)
+    try_promote_verified_poc(
+        layout, args.output, max(0, args.max_outer_rounds - 1), cve_id
+    )
 
 
 def run_reproduction(args: ReproArgs) -> Path | None:
@@ -273,6 +363,13 @@ def run_reproduction(args: ReproArgs) -> Path | None:
             run_reproduction_async(args),
             timeout_sec=args.run_timeout_sec,
             run_root=args.output,
+            on_timeout=lambda: _promote_on_timeout(args),
         )
 
-    return asyncio.run(_run())
+    result = asyncio.run(_run())
+    if result is not None:
+        return result
+    poc = args.output / "poc.bin"
+    if poc.is_file() and poc.stat().st_size > 0:
+        return poc
+    return None

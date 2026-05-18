@@ -67,6 +67,17 @@ _VALID_BUG_CLASSES = frozenset(
 
 _VALID_SANITIZERS = frozenset({"asan", "ubsan", "msan", "asan+ubsan"})
 
+# Bug classes whose failures are reported via UBSan (runtime error) rather than ASan alone.
+_UBSAN_REQUIRED_BUG_CLASSES = frozenset(
+    {
+        "oob-read",
+        "oob-write",
+        "integer-overflow",
+        "signed-shift",
+        "divide-by-zero",
+    }
+)
+
 
 def _first_shell_invoke_token(build_cmd: str) -> str | None:
     try:
@@ -174,6 +185,20 @@ def validate_init(layout: RunLayout) -> Tuple[bool, str]:
     if "-fsanitize" not in build_cmd and "fsanitize" not in build_cmd:
         return False, "build_info.json: build_cmd must include -fsanitize=... flags"
 
+    if bug_class in _UBSAN_REQUIRED_BUG_CLASSES:
+        if "ubsan" not in sanitizer and sanitizer != "asan+ubsan":
+            return (
+                False,
+                f"bug_class {bug_class!r} requires sanitizer 'asan+ubsan' (or 'ubsan') "
+                "so UndefinedBehaviorSanitizer can observe the failure",
+            )
+        if "undefined" not in build_cmd and "ubsan" not in build_cmd:
+            return (
+                False,
+                "build_cmd must include -fsanitize=address,undefined (or undefined) "
+                f"for bug_class {bug_class!r}",
+            )
+
     src = layout.source
     if not src.is_dir():
         return False, f"missing vulnerable tree at {src} (run git worktree add during INIT)"
@@ -222,6 +247,66 @@ def validate_init(layout: RunLayout) -> Tuple[bool, str]:
         joined = "; ".join(invalid_reasons[:5])
         return False, f"BBtargets.txt has no entries pointing to existing source files ({joined})"
     return True, ""
+
+
+def normalize_sanitizer_build(layout: RunLayout) -> bool:
+    """Upgrade ASan-only INIT builds to ASan+UBSan when the bug class needs UBSan."""
+    meta_path = layout.env / "build_info.json"
+    if not meta_path.is_file():
+        return False
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return False
+
+    bug_class = (meta.get("bug_class") or "").strip()
+    if bug_class not in _UBSAN_REQUIRED_BUG_CLASSES:
+        return False
+
+    build_cmd = meta.get("build_cmd") or ""
+    sanitizer = (meta.get("sanitizer") or "").strip().lower()
+    changed = False
+
+    if "undefined" not in build_cmd and "ubsan" not in build_cmd:
+        if "-fsanitize=address" in build_cmd and "-fsanitize=address,undefined" not in build_cmd:
+            build_cmd = build_cmd.replace(
+                "-fsanitize=address", "-fsanitize=address,undefined", 1
+            )
+        elif "-fsanitize=" in build_cmd and ",undefined" not in build_cmd:
+            import re as _re
+
+            build_cmd = _re.sub(
+                r"-fsanitize=([^\s\"']+)",
+                lambda m: (
+                    f"-fsanitize={m.group(1)},undefined"
+                    if "undefined" not in m.group(1)
+                    else m.group(0)
+                ),
+                build_cmd,
+                count=1,
+            )
+        changed = True
+
+    if sanitizer in ("asan", "ubsan") and sanitizer != "asan+ubsan":
+        meta["sanitizer"] = "asan+ubsan"
+        changed = True
+
+    if not changed:
+        return False
+
+    meta["build_cmd"] = build_cmd
+    san_env = meta.get("sanitizer_env")
+    if not isinstance(san_env, dict):
+        san_env = {}
+    san_env.setdefault(
+        "UBSAN_OPTIONS", "print_stacktrace=1:halt_on_error=1:symbolize=1"
+    )
+    san_env.setdefault(
+        "ASAN_OPTIONS", "abort_on_error=1:detect_leaks=0:symbolize=1"
+    )
+    meta["sanitizer_env"] = san_env
+    meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+    return True
 
 
 def auto_insert_oracles(layout: RunLayout, cve_id: str) -> Tuple[bool, str]:

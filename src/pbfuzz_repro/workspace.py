@@ -8,7 +8,9 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 _PBFUZZ_SRC = Path(__file__).resolve().parent.parent.parent / "pbfuzz"
 if _PBFUZZ_SRC.is_dir() and str(_PBFUZZ_SRC) not in sys.path:
@@ -59,30 +61,54 @@ def write_inputs(
     return extract_cve_id(desc_text)
 
 
-def compose_task_md(output_dir: Path, cve_id: str, *, patch_available: bool = True) -> None:
+_HINTS_JSON = Path(__file__).resolve().parent / "hints.json"
+
+
+@lru_cache(maxsize=1)
+def _load_hint_rules() -> tuple[dict[str, Any], ...]:
+    data = json.loads(_HINTS_JSON.read_text(encoding="utf-8"))
+    rules = data.get("rules")
+    if not isinstance(rules, list):
+        raise ValueError(f"{_HINTS_JSON}: expected top-level 'rules' array")
+    return tuple(rules)
+
+
+def _rule_matches(desc_lower: str, rule: dict[str, Any]) -> bool:
+    match_all = rule.get("match_all") or []
+    match_any = rule.get("match_any") or []
+    if match_all and not all(k in desc_lower for k in match_all):
+        return False
+    if match_any:
+        return any(k in desc_lower for k in match_any)
+    return bool(match_all)
+
+
+def _format_hint(rule: dict[str, Any]) -> str:
+    title = rule.get("title", "Hint")
+    body = rule.get("body", "")
+    return f"\n## {title}\n\n{body}\n"
+
+
+def _cve_description_hints(desc: str) -> str:
+    """Optional TASK.md hints inferred from CVE description keywords (may be disabled via CLI)."""
+    dl = desc.lower()
+    for rule in _load_hint_rules():
+        if _rule_matches(dl, rule):
+            return _format_hint(rule)
+    return ""
+
+
+def compose_task_md(
+    output_dir: Path,
+    cve_id: str,
+    *,
+    patch_available: bool = True,
+    hint_enabled: bool = True,
+) -> None:
     desc = (output_dir / "inputs" / "CVE_description.txt").read_text(
         encoding="utf-8", errors="replace"
     )
-    hints = ""
-    dl = desc.lower()
-    if "swscale" in dl or "yuv2ya16" in dl:
-        hints = (
-            "\n## FFmpeg swscale hint\n\n"
-            "This class of bugs often triggers via **ffmpeg** with **rawvideo** input "
-            "(e.g. `yuva444p16le`), a **large scale** filter (`scale=8192:8192:flags=lanczos+...`), "
-            "and output `ya16le`. The PoC is typically a small raw planar frame file, not a container.\n"
-        )
-    elif "jpegxl" in dl or "jpeg xl" in dl:
-        hints = (
-            "\n## FFmpeg demuxer hint\n\n"
-            "JPEG XL animation bugs often need **ffprobe** or **ffmpeg** with `-f jpegxl_anim` "
-            "and an oversized/sparse `.jxl` input.\n"
-        )
-    elif "sbgdec" in dl or "sbg" in dl.lower():
-        hints = (
-            "\n## FFmpeg sbgdec hint\n\n"
-            "SBG demuxer bugs often use **ffmpeg** with `-f sbg` and a crafted text/script input.\n"
-        )
+    hints = _cve_description_hints(desc) if hint_enabled else ""
     if patch_available:
         inputs_section = (
             "## Inputs\n\n"

@@ -98,7 +98,8 @@ def classify_sanitizer_crash(
     sig = signals or analyze_output(combined, exit_code, "")
     if sig.has_asan_error:
         return True
-    if sig.has_ubsan_runtime and sig.has_ubsan_summary:
+    # UBSan often prints "runtime error:" on stderr then exits 0 unless halt_on_error aborts.
+    if sig.has_ubsan_runtime:
         return True
     if sig.has_crash_exit and sig.has_sanitizer_summary:
         return True
@@ -107,6 +108,16 @@ def classify_sanitizer_crash(
     if sig.has_signed_overflow:
         return True
     return False
+
+
+def verification_timeout_sec(poc_size: int, base: int | None = None) -> int:
+    """Scale per-PoC verification timeout for large inputs (e.g. multi-GB MPEG-PS)."""
+    base_sec = base if base is not None else int(os.environ.get("EXEC_TIMEOUT_SEC", "120"))
+    if poc_size <= 0:
+        return max(60, base_sec)
+    # ~10s per 100 MiB logical size, cap at 15 minutes
+    scaled = 60 + (poc_size // (100 * 1024 * 1024)) * 10
+    return min(900, max(base_sec, scaled))
 
 
 def verify_poc(
@@ -142,13 +153,14 @@ def verify_poc(
     log_path = layout.findings / f"sanitizer_run_{outer_round}.log"
     cid = (meta.get("cve_id") or cve_id or "").strip()
 
+    timeout_sec = verification_timeout_sec(poc_size)
     try:
         proc = subprocess.run(
             args,
             cwd=str(layout.source.resolve()),
             capture_output=True,
             text=True,
-            timeout=int(os.environ.get("EXEC_TIMEOUT_SEC", "60")),
+            timeout=timeout_sec,
             env=env,
         )
     except subprocess.TimeoutExpired:
@@ -378,5 +390,6 @@ __all__ = [
     "build_init_retry_feedback",
     "build_pier_no_oracle_feedback",
     "classify_sanitizer_crash",
+    "verification_timeout_sec",
     "verify_poc",
 ]

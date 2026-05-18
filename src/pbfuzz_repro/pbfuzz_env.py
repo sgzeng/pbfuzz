@@ -25,6 +25,36 @@ def _default_pbfuzz_home() -> Path:
 _PBFUZZ = Path(os.environ.get("PBFUZZ_HOME") or _default_pbfuzz_home()).resolve()
 
 
+def _infer_exec_timeout_sec(meta: dict[str, Any], layout: RunLayout) -> int:
+    """Per-run subprocess timeout for fuzz iterations (large CVE inputs need more)."""
+    raw = meta.get("exec_timeout_sec")
+    if raw is not None:
+        try:
+            return max(5, int(raw))
+        except (TypeError, ValueError):
+            pass
+    base = int(os.environ.get("EXEC_TIMEOUT_SEC", "120"))
+    if os.environ.get("PBFUZZ_HINT_ENABLED", "1").strip().lower() in ("0", "false", "no"):
+        return base
+    desc_path = layout.inputs / "CVE_description.txt"
+    if desc_path.is_file():
+        text = desc_path.read_text(encoding="utf-8", errors="replace").lower()
+        if any(
+            hint in text
+            for hint in (
+                "2 gb",
+                "2gb",
+                "gigabyte",
+                "sparse",
+                "int_max",
+                "2.15 gb",
+                "multi-gb",
+            )
+        ):
+            return max(base, 600)
+    return base
+
+
 def build_launcher_dict(
     layout: RunLayout, cve_id: str, *, patch_available: bool = True
 ) -> dict[str, Any]:
@@ -37,10 +67,10 @@ def build_launcher_dict(
         bin_path = meta.get("binary_path") or "./a.out"
         run_cmd = [str(bin_path).strip(), "@@"]
     max_iters = int(os.environ.get("MAX_INNER_ITER", "10"))
-    exec_timeout = int(os.environ.get("EXEC_TIMEOUT_SEC", "5"))
+    exec_timeout = _infer_exec_timeout_sec(meta, layout)
     llm_model = (os.environ.get("PBFUZZ_LLM_MODEL") or os.environ.get("CURSOR_MODEL") or "").strip()
     if not llm_model:
-        llm_model = "gemini-2.5-pro"
+        llm_model = "auto"
     cve = (meta.get("cve_id") or cve_id or "CVE-UNKNOWN").strip()
     return {
         "static_result_folder": str((layout.env / "static_results").resolve()),
