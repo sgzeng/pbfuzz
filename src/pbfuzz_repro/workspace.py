@@ -1,0 +1,175 @@
+"""Workspace layout for standalone CVE reproduction."""
+
+from __future__ import annotations
+
+import json
+import re
+import shutil
+import sys
+from pathlib import Path
+
+_PBFUZZ_SRC = Path(__file__).resolve().parent.parent.parent / "pbfuzz"
+if _PBFUZZ_SRC.is_dir() and str(_PBFUZZ_SRC) not in sys.path:
+    sys.path.insert(0, str(_PBFUZZ_SRC))
+
+
+def extract_cve_id(text: str) -> str:
+    m = re.search(r"CVE-\d{4}-\d+", text, re.IGNORECASE)
+    if m:
+        return m.group(0).upper()
+    return "CVE-UNKNOWN"
+
+
+def write_inputs(output_dir: Path, cve_desc_path: Path, patch_path: Path) -> str:
+    """Copy user inputs into output_dir/inputs/; return extracted cve_id."""
+    inputs = output_dir / "inputs"
+    inputs.mkdir(parents=True, exist_ok=True)
+    desc_text = cve_desc_path.read_text(encoding="utf-8", errors="replace")
+    shutil.copy2(cve_desc_path, inputs / "CVE_description.txt")
+    shutil.copy2(patch_path, inputs / "fix.patch")
+    return extract_cve_id(desc_text)
+
+
+def compose_task_md(output_dir: Path, cve_id: str) -> None:
+    desc = (output_dir / "inputs" / "CVE_description.txt").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    hints = ""
+    dl = desc.lower()
+    if "swscale" in dl or "yuv2ya16" in dl:
+        hints = (
+            "\n## FFmpeg swscale hint\n\n"
+            "This class of bugs often triggers via **ffmpeg** with **rawvideo** input "
+            "(e.g. `yuva444p16le`), a **large scale** filter (`scale=8192:8192:flags=lanczos+...`), "
+            "and output `ya16le`. The PoC is typically a small raw planar frame file, not a container.\n"
+        )
+    elif "jpegxl" in dl or "jpeg xl" in dl:
+        hints = (
+            "\n## FFmpeg demuxer hint\n\n"
+            "JPEG XL animation bugs often need **ffprobe** or **ffmpeg** with `-f jpegxl_anim` "
+            "and an oversized/sparse `.jxl` input.\n"
+        )
+    elif "sbgdec" in dl or "sbg" in dl.lower():
+        hints = (
+            "\n## FFmpeg sbgdec hint\n\n"
+            "SBG demuxer bugs often use **ffmpeg** with `-f sbg` and a crafted text/script input.\n"
+        )
+    body = (
+        f"# CVE Reproduction: {cve_id}\n\n"
+        f"## Description\n\n{desc.strip()}\n\n"
+        "## Inputs\n\n"
+        "- `inputs/CVE_description.txt`\n"
+        "- `inputs/fix.patch` (upstream fix; derive BBtargets and condition_expr from this)\n"
+        f"{hints}\n"
+        "## Goal\n\n"
+        "Produce a PoC input that triggers the vulnerability on the vulnerable build.\n"
+        "Success is indicated by oracle stderr: `{cve_id} triggered`.\n"
+        "Write the final bytes to `work/output/candidate_poc.bin` and `touch work/output/CANDIDATE_READY`.\n"
+    )
+    (output_dir / "TASK.md").write_text(body, encoding="utf-8")
+
+
+def init_work_layout(output_dir: Path, cve_id: str) -> Path:
+    """Create work/ skeleton (source/ is created by INIT via git worktree)."""
+    work = output_dir / "work"
+    static_dir = work / "static_results"
+    out_dir = work / "output"
+    static_dir.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    bb = static_dir / "BBtargets.txt"
+    if not bb.is_file() or bb.stat().st_size == 0:
+        bb.write_text(
+            "# placeholder; INIT must overwrite from inputs/fix.patch\n"
+            "# format: relative/path.c:LINE[,condition_expr]\n",
+            encoding="utf-8",
+        )
+
+    build_info = {
+        "cve_id": cve_id,
+        "build_cmd": "",
+        "binary_path": "",
+        "cwd": "",
+        "run_cmd": [],
+    }
+    (work / "build_info.json").write_text(json.dumps(build_info, indent=2), encoding="utf-8")
+
+    tmpl = _PBFUZZ_SRC / "templates"
+    cursor_placeholder = work / "source" / ".cursor"
+    # source/ may not exist until INIT; workflow template is copied after worktree exists.
+    _ = cursor_placeholder
+    if (tmpl / "workflow_state.md").is_file():
+        # Stash template at work level; runner copies into source/.cursor after INIT validates.
+        shutil.copy2(tmpl / "workflow_state.md", work / "_workflow_state_template.md")
+
+    return work
+
+
+def seed_cursor_templates(work: Path, cve_id: str) -> None:
+    """After INIT creates work/source, seed .cursor templates and schemas."""
+    src = work / "source"
+    if not src.is_dir():
+        return
+    cursor_dir = src / ".cursor"
+    cursor_dir.mkdir(parents=True, exist_ok=True)
+    tmpl = _PBFUZZ_SRC / "templates"
+    wf_tmpl = work / "_workflow_state_template.md"
+    if wf_tmpl.is_file():
+        shutil.copy2(wf_tmpl, cursor_dir / "workflow_state.md")
+    elif (tmpl / "workflow_state.md").is_file():
+        shutil.copy2(tmpl / "workflow_state.md", cursor_dir / "workflow_state.md")
+    schemas_src = _PBFUZZ_SRC / "schemas.py"
+    if schemas_src.is_file():
+        shutil.copy2(schemas_src, src / "schemas.py")
+
+
+def write_init_mcp(work: Path) -> None:
+    """Minimal MCP config under work/source/.cursor/ (full config regenerated by launcher)."""
+    script_dir = _PBFUZZ_SRC.resolve()
+    src = (work / "source").resolve()
+    if not src.is_dir():
+        return
+    out = (work / "output").resolve()
+    root = work.resolve()
+    cfg = {
+        "mcpServers": {
+            "workflow": {
+                "command": "python3",
+                "args": [
+                    str(script_dir / "mcp_workflow_server.py"),
+                    "--output-dir",
+                    str(out),
+                    "--source-code-dir",
+                    str(src),
+                ],
+            },
+            "build": {
+                "command": "python3",
+                "args": [
+                    str(script_dir / "mcp_build_server.py"),
+                    "--source-code-dir",
+                    str(src),
+                    "--workspace-root",
+                    str(root),
+                ],
+            },
+        }
+    }
+    cursor = src / ".cursor"
+    cursor.mkdir(parents=True, exist_ok=True)
+    (cursor / "mcp.json").write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+
+
+def read_candidate_poc(work: Path) -> bytes | None:
+    ready = work / "output" / "CANDIDATE_READY"
+    poc = work / "output" / "candidate_poc.bin"
+    if ready.is_file() and poc.is_file() and poc.stat().st_size > 0:
+        return poc.read_bytes()
+    return None
+
+
+def clear_candidate_marker(work: Path) -> None:
+    for name in ("CANDIDATE_READY", "candidate_poc.bin"):
+        p = work / "output" / name
+        if p.is_file():
+            p.unlink()

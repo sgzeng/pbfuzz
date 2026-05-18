@@ -16,17 +16,16 @@ graph LR
     REFLECT --> PLAN
 ```
 
-> **Note**: INIT (build + initial BBtargets + initial oracle) is performed by the host wrapper before this workflow starts. The binary already exists, oracles are already inserted, and `BuildInfo.dirty` is false on entry. This workflow begins at PLAN.
+> **Note**: INIT (build + initial BBtargets + initial oracle) is performed by the reproduction driver before this workflow starts. The binary already exists, oracles are already inserted, and `BuildInfo.dirty` is false on entry. This workflow begins at PLAN.
 
 ### PLAN Phase Rules
 - **R-PL1**: On first entry, must read `static_results/BBtargets.txt` (Target Locations: `relative/path.c:LINE[,condition_expr]`) and the relevant source files via shell.
 - **R-PL2**: Must write/update BugPredicates based on Target Locations.
-- **R-PL3**: Must write/update Preconditions, RootCauses, and TriggerPlans based on source analysis, `patch.diff` (level3), `error.txt`, and reflection / green feedback.
+- **R-PL3**: Must write/update Preconditions, RootCauses, and TriggerPlans based on source analysis, `inputs/fix.patch`, CVE description, and reflection from prior fuzz rounds.
 - **R-PL4**: Forbidden to perform any manual test. Must apply RULE_FLOW to verify your hypothesis.
 - **R-PL5**: Must apply RULE_IMPLICIT_BEHAVIOR and RULE_MULTI_TARGETS.
-- **R-PL6**: ALLOWED TOOLS: Workflow MCP Tools, **`insert_oracle`** (optional refinement; the wrapper already inserted a baseline oracle for every BBtargets entry with `condition_expr=1`).
-- **R-PL7**: When you need a tighter oracle, call **`insert_oracle(file, line, condition_expr, task_id)`** to refine; the build server upserts BBtargets.txt automatically and marks `BuildInfo.dirty=true` so EXECUTE rebuilds.
-- **R-PL8**: If `GreenFeedbackHistory` has a recent green entry with `exit_code == 0`, treat oracle as **too strict locally** or misaligned with CyberGym — revise oracle condition and call `insert_oracle` again.
+- **R-PL6**: ALLOWED TOOLS: Workflow MCP Tools, **`insert_oracle`** (optional refinement; the driver already inserted a baseline oracle for every BBtargets entry).
+- **R-PL7**: When you need a tighter oracle, call **`insert_oracle(file, line, condition_expr, cve_id)`** to refine; the build server upserts BBtargets.txt automatically and marks `BuildInfo.dirty=true` so EXECUTE rebuilds.
 
 ### IMPLEMENT Phase Rules
 - **R-IM1**: Must take ALL TriggerPlans and convert input constraints into concrete ParameterSpace
@@ -49,8 +48,6 @@ graph LR
 - **R-RF3**: For reach/no-trigger testcases in FuzzPlan, must identify why bug predicate was not triggered by tracing variable dependencies backward
 - **R-RF4**: Must transition to PLAN phase if performed more than THREE manual test. This budget resets upon re-entering REFLECT.
 - **R-RF5**: ALLOWED TOOLS: launch_interactive_gdb and Workflow MCP Tools
-- **R-RFX**: If the latest **GreenFeedbackHistory** entry has `source == "green"` and `exit_code == 0`, skip deep testcase analysis — prioritize revising the oracle in PLAN (see R-PL8).
-
 ### RULE_IMPLICIT_BEHAVIOR:
 - Never assume explicit code paths are the only ones
 - Always account for implicit library behavior, special cases and compatibility hacks.
@@ -94,9 +91,9 @@ graph LR
 ```json
 {
   "phase": "PLAN",
-  "status": "Wrapper completed INIT (build + oracle insertion). Ready for PLAN.",
-  "current_task": "Derive BugPredicates, TriggerPlans from BBtargets.txt + patch.diff",
-  "next_action": "Read BBtargets.txt and patch.diff; refine oracle if needed, then transition_phase(IMPLEMENT)"
+  "status": "Driver completed INIT (build + oracle insertion). Ready for PLAN.",
+  "current_task": "Derive BugPredicates, TriggerPlans from BBtargets.txt + fix.patch",
+  "next_action": "Read BBtargets.txt and inputs/fix.patch; refine oracle if needed, then transition_phase(IMPLEMENT)"
 }
 ```
 <!-- DYNAMIC:STATE:END -->
@@ -113,13 +110,6 @@ graph LR
 }
 ```
 <!-- DYNAMIC:BUILD_INFO:END -->
-
-<!-- DYNAMIC:GREEN_FEEDBACK_HISTORY:START -->
-## GreenFeedbackHistory
-```json
-[]
-```
-<!-- DYNAMIC:GREEN_FEEDBACK_HISTORY:END -->
 
 <!-- DYNAMIC:BUG_PREDICATES:START -->
 ## BugPredicates

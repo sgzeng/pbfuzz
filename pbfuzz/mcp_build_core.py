@@ -25,38 +25,41 @@ def read_phase(workflow_file: Path) -> str:
     return "PLAN"
 
 
-def cybergym_root(source_code_dir: Path, explicit: Optional[Path] = None) -> Path:
+def workspace_root(source_code_dir: Path, explicit: Optional[Path] = None) -> Path:
     if explicit is not None:
         return explicit
     parent = source_code_dir.parent
-    if (parent / "cybergym_build.json").exists():
+    if (parent / "build_info.json").exists():
         return parent
     return source_code_dir
 
 
+# Backward-compatible alias for unit tests
+cybergym_root = workspace_root
+
+
 def resolve_rebuild_workdir(
-    cybergym_root: Path,
+    ws_root: Path,
     source_code_dir: Path,
     cwd_field: Optional[str],
 ) -> Path:
-    """Directory where ``cybergym_build.json`` ``build_cmd`` runs (``subprocess.run(..., cwd=...)``).
+    """Directory where ``build_info.json`` ``build_cmd`` runs (``subprocess.run(..., cwd=...)``).
 
     - Empty ``cwd`` → ``source_code_dir`` (vulnerable tree root; matches INIT_PROMPT).
     - Non-empty ``cwd`` → ``source_code_dir / cwd`` when that path is an existing directory;
-      otherwise ``cybergym_root / cwd`` (legacy layout, e.g. ``cwd`` = ``sub`` sibling of
-      ``source/`` in unit tests).
+      otherwise ``ws_root / cwd`` (legacy layout).
     """
     cwd = (cwd_field or "").strip()
     if cwd:
         candidate = (source_code_dir / cwd).resolve()
         if candidate.is_dir():
             return candidate
-        return (cybergym_root / cwd).resolve()
+        return (ws_root / cwd).resolve()
     return source_code_dir.resolve()
 
 
-def _bbtargets_path(cybergym_root: Path) -> Path:
-    return cybergym_root / "static_results" / "BBtargets.txt"
+def _bbtargets_path(ws_root: Path) -> Path:
+    return ws_root / "static_results" / "BBtargets.txt"
 
 
 def upsert_bbtargets_entry(
@@ -130,7 +133,7 @@ def insert_oracle_into_file(
     """Insert (or replace) a PBFUZZ_ORACLE block at ``relative_file:line``.
 
     Also upserts the ``relative_file:line[,condition_expr]`` row in
-    ``<bbtargets_root or cybergym_root(source_root)>/static_results/BBtargets.txt``
+    ``<bbtargets_root or workspace_root(source_root)>/static_results/BBtargets.txt``
     so Target Locations stay in sync with whatever oracle was last written.
     """
     path = (source_root / relative_file).resolve()
@@ -156,7 +159,7 @@ def insert_oracle_into_file(
     backup.write_bytes(path.read_bytes())
     path.write_text(new_body, encoding="utf-8")
 
-    bb_root = bbtargets_root if bbtargets_root is not None else cybergym_root(source_root, None)
+    bb_root = bbtargets_root if bbtargets_root is not None else workspace_root(source_root, None)
     try:
         upsert_bbtargets_entry(_bbtargets_path(bb_root), relative_file, line_1based, condition_expr)
     except OSError as e:
@@ -171,25 +174,25 @@ def insert_oracle_into_file(
 
 
 def run_rebuild(
-    cybergym_root: Path,
+    ws_root: Path,
     source_code_dir: Path,
     workflow_file: Path,
     log_path: Path,
 ) -> dict[str, Any]:
-    meta_path = cybergym_root / "cybergym_build.json"
+    meta_path = ws_root / "build_info.json"
     if not meta_path.exists():
         return {"ok": False, "error": f"missing {meta_path}"}
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     build_cmd = meta.get("build_cmd") or meta.get("BUILD_CMD")
     if not build_cmd:
-        return {"ok": False, "error": "cybergym_build.json has no build_cmd"}
+        return {"ok": False, "error": "build_info.json has no build_cmd"}
 
     cwd_meta = meta.get("cwd")
     if cwd_meta is None:
         cwd_meta = ""
     elif not isinstance(cwd_meta, str):
         cwd_meta = str(cwd_meta)
-    workdir = resolve_rebuild_workdir(cybergym_root, source_code_dir, cwd_meta)
+    workdir = resolve_rebuild_workdir(ws_root, source_code_dir, cwd_meta)
 
     log_lines: List[str] = []
     log_lines.append(
@@ -259,6 +262,7 @@ __all__ = [
     "strip_oracle_blocks",
     "workflow_path",
     "read_phase",
+    "workspace_root",
     "cybergym_root",
     "upsert_bbtargets_entry",
 ]

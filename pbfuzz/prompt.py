@@ -266,7 +266,7 @@ Code: {generator_code}
             "\n<POC_PROTOCOL>\n"
             "When you confirm a PoC that triggers the bug locally, write the bytes to "
             "`<output_dir>/candidate_poc.bin` and `touch <output_dir>/CANDIDATE_READY`. "
-            "The wrapper picks these up and forwards the PoC to the green agent for verification.\n"
+            "The reproduction driver copies these to the run output directory as poc.bin.\n"
             "</POC_PROTOCOL>\n"
         )
 

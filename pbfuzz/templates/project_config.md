@@ -59,12 +59,12 @@ Find proof-of-concept inputs that violate safety properties in C/C++ programs us
 - **Target Locations**: see `{bbtargets_path}` (one `relative/path.c:LINE[,condition_expr]` per line)
 <!-- STATIC:TARGET_INFO:END -->
 
-<!-- STATIC:CYBERGYM_BUILD:START -->
-## CyberGym Build Metadata (also mirrored to `cybergym_build.json` at workspace root)
+<!-- STATIC:BUILD_INFO:START -->
+## Build Metadata (also mirrored to `build_info.json` at workspace root)
 ```json
-{cybergym_build_json}
+{build_info_json}
 ```
-<!-- STATIC:CYBERGYM_BUILD:END -->
+<!-- STATIC:BUILD_INFO:END -->
 
 <!-- STATIC:FUZZER_CONFIG:START -->
 ## Fuzzer Configuration

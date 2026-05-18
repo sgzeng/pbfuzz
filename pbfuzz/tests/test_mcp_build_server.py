@@ -54,7 +54,7 @@ def test_run_rebuild_updates_buildinfo(tmp_path: Path):
         encoding="utf-8",
     )
     out_bin = (src / "hi").resolve()
-    (tmp_path / "cybergym_build.json").write_text(
+    (tmp_path / "build_info.json").write_text(
         json.dumps(
             {
                 "build_cmd": f"gcc -o hi {cfile.name}",
@@ -100,7 +100,7 @@ def test_run_rebuild_empty_cwd_uses_source_root(tmp_path: Path):
 """,
         encoding="utf-8",
     )
-    (cybergym / "cybergym_build.json").write_text(
+    (cybergym / "build_info.json").write_text(
         json.dumps(
             {
                 "build_cmd": "gcc -o hi hi.c",

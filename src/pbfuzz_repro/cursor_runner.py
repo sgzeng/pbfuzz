@@ -25,16 +25,10 @@ _CURSOR_CLI_PERMISSIONS = {
 
 
 def cursor_agent_model() -> str:
-    """Match ``pbfuzz_env.build_launcher_dict`` precedence so launcher metadata and CLI agree."""
     return (os.environ.get("PBFUZZ_LLM_MODEL") or os.environ.get("CURSOR_MODEL") or "").strip()
 
 
 def ensure_cursor_cli_permissions(workspace: Path) -> Path:
-    """Write ``<workspace>/.cursor/cli.json`` so MCP + shell tools do not stall on approval prompts.
-
-    ``cursor-agent --workspace`` treats this directory as the project root; permissions are
-    read from ``.cursor/cli.json`` there (global fallback: ``~/.cursor/cli-config.json``).
-    """
     root = Path(workspace).resolve()
     cursor_dir = root / ".cursor"
     cursor_dir.mkdir(parents=True, exist_ok=True)
@@ -44,7 +38,6 @@ def ensure_cursor_cli_permissions(workspace: Path) -> Path:
 
 
 async def run_iteration(workspace: Path, prompt: str, timeout: int = 3600) -> str:
-    """Execute one ``cursor-agent -p`` pass; persist combined output to ``cursor.log``."""
     if os.environ.get("SKIP_CURSOR_CLI_PERMISSION_SEED", "").lower() not in (
         "1",
         "true",
@@ -78,7 +71,6 @@ async def run_iteration(workspace: Path, prompt: str, timeout: int = 3600) -> st
 
 
 async def run_iteration_source_only(prompt_file: Path, workspace: Path, timeout: int = 7200) -> str:
-    """Run cursor-agent with prompt body read from ``prompt_file`` (full fuzzing prompt)."""
     prompt = prompt_file.read_text(encoding="utf-8", errors="replace")
     return await run_iteration(workspace, prompt, timeout=timeout)
 
@@ -86,7 +78,6 @@ async def run_iteration_source_only(prompt_file: Path, workspace: Path, timeout:
 async def _communicate_with_timeout(
     proc: asyncio.subprocess.Process, timeout: int
 ) -> tuple[bytes, bytes | None]:
-    """Collect output with timeout; on timeout or cancel, kill process (timeout raises with tail)."""
     try:
         return await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError as e:

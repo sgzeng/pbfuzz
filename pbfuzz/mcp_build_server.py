@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MCP server for CyberGym oracle instrumentation and project rebuild.
+MCP server for oracle instrumentation and project rebuild.
 
 Implements stdio tools insert_oracle and rebuild_project; logic lives in mcp_build_core.py.
 """
@@ -23,11 +23,11 @@ except ImportError:
     sys.exit(1)
 
 from mcp_build_core import (
-    cybergym_root,
     insert_oracle_into_file,
     read_phase,
     run_rebuild,
     workflow_path,
+    workspace_root,
 )
 from mcp_workflow_server import parse_json_block, replace_json_block
 
@@ -37,22 +37,28 @@ logger = logging.getLogger(__name__)
 class MCPBuildServer:
     """stdio MCP server exposing insert_oracle and rebuild_project."""
 
-    def __init__(self, source_code_dir: Optional[str] = None, cybergym_root_arg: Optional[str] = None):
+    def __init__(
+        self,
+        source_code_dir: Optional[str] = None,
+        workspace_root_arg: Optional[str] = None,
+        cybergym_root_arg: Optional[str] = None,
+    ):
         self.source_code_dir = Path(source_code_dir).resolve() if source_code_dir else Path.cwd()
-        self.cybergym_root_p = (
-            Path(cybergym_root_arg).resolve()
-            if cybergym_root_arg
-            else cybergym_root(self.source_code_dir, None)
+        wr_arg = workspace_root_arg or cybergym_root_arg
+        self.workspace_root_p = (
+            Path(wr_arg).resolve()
+            if wr_arg
+            else workspace_root(self.source_code_dir, None)
         )
         self.workflow_file = workflow_path(self.source_code_dir)
-        self.log_path = self.cybergym_root_p / "output" / "last_build.log"
+        self.log_path = self.workspace_root_p / "output" / "last_build.log"
         self.server = Server("build-server")
         self._setup_handlers()
 
     def _setup_handlers(self) -> None:
         src = self.source_code_dir
         wf = self.workflow_file
-        root = self.cybergym_root_p
+        root = self.workspace_root_p
         log_path = self.log_path
 
         @self.server.list_tools()
@@ -61,7 +67,7 @@ class MCPBuildServer:
                 types.Tool(
                     name="insert_oracle",
                     description=(
-                        "Insert CyberGym oracle prints before a source line. PLAN phase only. "
+                        "Insert oracle prints before a source line. PLAN phase only. "
                         "Removes prior PBFUZZ_ORACLE blocks in the same file."
                     ),
                     inputSchema={
@@ -77,7 +83,7 @@ class MCPBuildServer:
                 ),
                 types.Tool(
                     name="rebuild_project",
-                    description="Run cybergym_build.json build_cmd; updates BuildInfo. PLAN or EXECUTE only.",
+                    description="Run build_info.json build_cmd; updates BuildInfo. PLAN or EXECUTE only.",
                     inputSchema={"type": "object", "properties": {}},
                 ),
             ]
@@ -140,9 +146,13 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     p = argparse.ArgumentParser(description="MCP build / oracle server")
     p.add_argument("--source-code-dir", required=True)
-    p.add_argument("--cybergym-root", default=None)
+    p.add_argument("--workspace-root", default=None)
+    p.add_argument("--cybergym-root", default=None, help=argparse.SUPPRESS)
     args = p.parse_args()
-    srv = MCPBuildServer(source_code_dir=args.source_code_dir, cybergym_root_arg=args.cybergym_root)
+    srv = MCPBuildServer(
+        source_code_dir=args.source_code_dir,
+        workspace_root_arg=args.workspace_root or args.cybergym_root,
+    )
     asyncio.run(srv.run_stdio())
 
 

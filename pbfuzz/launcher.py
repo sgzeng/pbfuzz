@@ -33,7 +33,7 @@ def _build_tools_section(config):
         "- `fuzz`: Execute fuzzing with plan and generator\n",
         "- `launch_interactive_gdb`: Launch interactive GDB session for advanced deviation analysis, root cause analysis, and TriggerPlan verification\n",
         "- `insert_oracle`: (build server) Insert printf-based reached/triggered oracle and upsert BBtargets.txt; PLAN phase only\n",
-        "- `rebuild_project`: (build server) Run cybergym_build.json build; EXECUTE phase only (initial build is done by the wrapper)\n\n",
+        "- `rebuild_project`: (build server) Run build_info.json build; EXECUTE phase only (initial build is done by the driver)\n\n",
         "**Workflow MCP Tools**\n",
         "- `write_workflow_block(target_block, content_json)`: Write JSON to specific workflow blocks\n",
         "- `transition_phase(next_phase)`: Transition to next phase with gatekeeper validation\n",
@@ -281,24 +281,24 @@ def create_workflow_files(config, fuzzer_config=None):
         fuzzer_config_json = _generate_fuzzer_config_block(config, fuzzer_config)
         dynamic_tools_block = _build_tools_section(config)
         template_content = _replace_tools_block(template_content, dynamic_tools_block)
-        tid = getattr(config, "task_id", "") or ""
+        cve_id = getattr(config, "cve_id", "") or getattr(config, "task_id", "") or ""
         bcmd = getattr(config, "build_cmd", "") or ""
         bpath = getattr(config, "binary_path", "") or ""
         rcmd = getattr(config, "run_cmd_template", "") or (
             " ".join(config.cmd) if getattr(config, "cmd", None) else ""
         )
-        cybergym_obj = {
-            "task_id": tid,
+        build_obj = {
+            "cve_id": cve_id,
             "build_cmd": bcmd,
             "binary_path": bpath,
-            "cwd": getattr(config, "cybergym_cwd", "") or "",
+            "cwd": getattr(config, "build_cwd", "") or getattr(config, "cybergym_cwd", "") or "",
             "run_cmd": list(config.cmd) if getattr(config, "cmd", None) else [],
         }
-        cybergym_build_json = json.dumps(cybergym_obj, indent=2)
+        build_info_json = json.dumps(build_obj, indent=2)
         bb_path = Path(config.static_result_folder) / "BBtargets.txt"
         formatted_content = template_content.format(
             llm_model=config.llm_model,
-            task_id=tid or "(set during INIT)",
+            task_id=cve_id or "(set during INIT)",
             cmd=" ".join(config.cmd) if getattr(config, "cmd", None) else "",
             source_code_folder=str(config.source_code_dir),
             output_dir=str(config.output_dir.absolute()),
@@ -307,7 +307,7 @@ def create_workflow_files(config, fuzzer_config=None):
             build_cmd=bcmd or "(set during INIT)",
             binary_path=bpath or "(set during INIT)",
             run_cmd_template=rcmd or "(set during INIT)",
-            cybergym_build_json=cybergym_build_json,
+            build_info_json=build_info_json,
             bbtargets_path=str(bb_path),
             fuzzer_config=fuzzer_config_json,
         )
@@ -327,23 +327,23 @@ def create_workflow_files(config, fuzzer_config=None):
     # Mirror machine-readable build metadata for mcp_build_server / rebuild_project
     try:
         ws_root = config.source_code_dir.parent
-        cybergym_path = ws_root / "cybergym_build.json"
-        cybergym_path.write_text(
+        build_path = ws_root / "build_info.json"
+        build_path.write_text(
             json.dumps(
                 {
-                    "task_id": getattr(config, "task_id", "") or "",
+                    "cve_id": getattr(config, "cve_id", "") or getattr(config, "task_id", "") or "",
                     "build_cmd": getattr(config, "build_cmd", "") or "",
                     "binary_path": getattr(config, "binary_path", "") or "",
-                    "cwd": getattr(config, "cybergym_cwd", "") or "",
+                    "cwd": getattr(config, "build_cwd", "") or getattr(config, "cybergym_cwd", "") or "",
                     "run_cmd": list(config.cmd) if getattr(config, "cmd", None) else [],
                 },
                 indent=2,
             ),
             encoding="utf-8",
         )
-        print(f"✓ Wrote {cybergym_path}")
+        print(f"✓ Wrote {build_path}")
     except OSError as e:
-        print(f"⚠️ Could not write cybergym_build.json: {e}")
+        print(f"⚠️ Could not write build_info.json: {e}")
     
     return project_config_path, workflow_state_path
 
@@ -357,7 +357,7 @@ def generate_mcp_config(config, fuzzer_config=None):
 
     abs_output_dir = Path(config.output_dir).absolute()
     abs_source_code_dir = Path(config.source_code_dir).absolute()
-    abs_cybergym_root = abs_source_code_dir.parent
+    abs_workspace_root = abs_source_code_dir.parent
 
     servers = {
         "fuzzer": {
@@ -388,7 +388,7 @@ def generate_mcp_config(config, fuzzer_config=None):
             "args": [
                 str(script_dir / "mcp_build_server.py"),
                 "--source-code-dir", str(abs_source_code_dir),
-                "--cybergym-root", str(abs_cybergym_root),
+                "--workspace-root", str(abs_workspace_root),
             ],
         },
     }

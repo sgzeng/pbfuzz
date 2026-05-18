@@ -150,9 +150,11 @@ class Config:
         self.enable_static_precondition_inference = True
         # MCP configuration default
         self.disable_mcp = False
-        # CyberGym / AgentBeats integration (optional)
+        # Standalone reproduction / optional task metadata
+        self.cve_id = ""
         self.task_id = ""
         self.build_cmd = ""
         self.binary_path = ""
         self.run_cmd_template = ""
+        self.build_cwd = ""
         self.cybergym_cwd = ""
