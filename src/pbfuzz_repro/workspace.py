@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -16,8 +15,6 @@ if _PBFUZZ_SRC.is_dir() and str(_PBFUZZ_SRC) not in sys.path:
     sys.path.insert(0, str(_PBFUZZ_SRC))
 
 from mcp_build_core import strip_oracle_blocks  # noqa: E402
-
-POC_MAX_BYTES = int(os.environ.get("PBFUZZ_POC_MAX_BYTES", str(16 * 1024 * 1024)))
 
 
 @dataclass(frozen=True)
@@ -148,21 +145,17 @@ def _log_driver_error(layout: RunLayout, message: str) -> None:
         f.write(message.rstrip() + "\n")
 
 
-def read_candidate_poc(layout: RunLayout) -> bytes | None:
-    """Return candidate bytes only if PBF fuzzer declared a valid PoC."""
+def read_candidate_poc(layout: RunLayout) -> "Path | None":
+    """Return validated PoC path, or None if no valid PoC was declared.
+
+    Callers must not read the whole file into memory (it may be a large sparse
+    file). Use ``shutil.copy2`` or pass the path directly to subprocesses.
+    """
     ready = layout.findings / "CANDIDATE_READY"
     poc = layout.findings / "candidate_poc.bin"
     if not ready.is_file() or not poc.is_file():
         return None
-    size = poc.stat().st_size
-    if size == 0:
-        return None
-    if size > POC_MAX_BYTES:
-        _log_driver_error(
-            layout,
-            f"candidate_poc.bin too large ({size} bytes > {POC_MAX_BYTES}); discarding",
-        )
-        clear_candidate_marker(layout)
+    if poc.stat().st_size == 0:
         return None
 
     marker = ready.read_text(encoding="utf-8", errors="replace").strip()
@@ -183,7 +176,7 @@ def read_candidate_poc(layout: RunLayout) -> bytes | None:
         clear_candidate_marker(layout)
         return None
 
-    return poc.read_bytes()
+    return poc
 
 
 def clear_candidate_marker(layout: RunLayout) -> None:

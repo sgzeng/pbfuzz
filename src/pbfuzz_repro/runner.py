@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -178,7 +179,7 @@ async def _run_init_phase(
     return False
 
 
-async def _run_inner_pier(args: ReproArgs, layout: RunLayout, cve_id: str, outer: int) -> tuple[bool, bytes | None]:
+async def _run_inner_pier(args: ReproArgs, layout: RunLayout, cve_id: str, outer: int) -> tuple[bool, "Path | None"]:
     output_dir = args.output.resolve()
     src_ws = layout.source.resolve()
 
@@ -213,10 +214,13 @@ async def _run_inner_pier(args: ReproArgs, layout: RunLayout, cve_id: str, outer
         return False, None
 
     workspace.sync_findings(layout)
-    candidate = workspace.read_candidate_poc(layout)
-    if candidate:
-        logs.append_runtime(output_dir, f"outer.{outer}.oracle_triggered bytes={len(candidate)}")
-        return True, candidate
+    candidate_path = workspace.read_candidate_poc(layout)
+    if candidate_path:
+        logs.append_runtime(
+            output_dir,
+            f"outer.{outer}.oracle_triggered poc_bytes={candidate_path.stat().st_size}",
+        )
+        return True, candidate_path
 
     logs.append_runtime(output_dir, f"outer.{outer}.pier_no_trigger")
     return False, None
@@ -242,24 +246,15 @@ async def run_reproduction_async(args: ReproArgs) -> Path | None:
             continue
 
         cve_id = _load_cve_id(layout, cve_id)
-        pier_ok, candidate = await _run_inner_pier(args, layout, cve_id, outer)
-        if not pier_ok or candidate is None:
+        pier_ok, candidate_path = await _run_inner_pier(args, layout, cve_id, outer)
+        if not pier_ok or candidate_path is None:
             last_feedback = (
                 "PIER loop exhausted without oracle trigger. "
                 "Refine bug_class, sanitizer, BBtargets, or run_cmd."
             )
             continue
 
-        import tempfile
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".poc") as tmp:
-            tmp_path = Path(tmp.name)
-            tmp_path.write_bytes(candidate)
-        crashed, excerpt = verify_sanitizer_crash(layout, tmp_path, outer)
-        try:
-            tmp_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+        crashed, excerpt = verify_sanitizer_crash(layout, candidate_path, outer)
 
         logs.append_runtime(
             args.output,
@@ -268,7 +263,7 @@ async def run_reproduction_async(args: ReproArgs) -> Path | None:
 
         if crashed:
             poc_out = args.output / "poc.bin"
-            poc_out.write_bytes(candidate)
+            shutil.copy2(candidate_path, poc_out)
             logs.append_runtime(args.output, f"Reproduced: yes ({cve_id})")
             return poc_out
 
@@ -277,9 +272,10 @@ async def run_reproduction_async(args: ReproArgs) -> Path | None:
         bb_path = layout.env / "static_results" / "BBtargets.txt"
         if bb_path.is_file():
             bb_text = bb_path.read_text(encoding="utf-8", errors="replace")[:1500]
+        poc_size = candidate_path.stat().st_size
         last_feedback = (
             f"Oracle triggered but sanitizer {meta.get('sanitizer')!r} did NOT crash.\n"
-            f"PoC size={len(candidate)} bytes. Runtime output tail:\n{excerpt}\n"
+            f"PoC size={poc_size} bytes. Runtime output tail:\n{excerpt}\n"
             f"Previous bug_class={meta.get('bug_class')!r}, sanitizer={meta.get('sanitizer')!r}\n"
             f"BBtargets:\n{bb_text}\n"
             "Re-classify the vulnerability, pick a different sanitizer/ref/oracle, and rebuild."

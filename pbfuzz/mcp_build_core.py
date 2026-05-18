@@ -149,9 +149,9 @@ def insert_oracle_into_file(
     tid = _c_string_literal(task_id)
     snippet = (
         f"/* PBFUZZ_ORACLE_START {task_id} */\n"
-        f'printf("%s reached\\n", "{tid}");\n'
+        f'fprintf(stderr, "%s reached\\n", "{tid}"); fflush(stderr);\n'
         f"if ({condition_expr}) "
-        f'printf("%s triggered\\n", "{tid}");\n'
+        f'{{ fprintf(stderr, "%s triggered\\n", "{tid}"); fflush(stderr); }}\n'
         f"/* PBFUZZ_ORACLE_END {task_id} */\n"
     )
     new_body = _insert_oracle_at_line(cleaned, line_1based, snippet)

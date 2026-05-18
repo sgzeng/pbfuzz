@@ -6,7 +6,6 @@ import argparse
 import base64
 import os
 import sys
-import tempfile
 from pathlib import Path
 
 from pbfuzz_repro.runner import ReproArgs, run_reproduction, verify_sanitizer_crash
@@ -83,14 +82,7 @@ def _parse_reproduce(ns: argparse.Namespace) -> int:
             args.cve_description.read_text(encoding="utf-8", errors="replace")
         ),
     )
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".poc") as tmp:
-        tmp_path = Path(tmp.name)
-        tmp_path.write_bytes(poc.read_bytes())
-    crashed, _ = verify_sanitizer_crash(layout, tmp_path, 0)
-    try:
-        tmp_path.unlink(missing_ok=True)
-    except OSError:
-        pass
+    crashed, _ = verify_sanitizer_crash(layout, poc, 0)
     if crashed:
         return 0
     print(

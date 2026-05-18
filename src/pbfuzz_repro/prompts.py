@@ -86,6 +86,19 @@ The driver appends a **Resolved paths** block below with absolute paths for:
    - `LINE` is 1-based inside the vulnerable file.
    - `condition_expr` is a C expression that is **non-zero when the bug fires**.
 
+   **Critical oracle placement rule**: `LINE` must be placed **at the root cause location
+   and BEFORE any operation that the sanitizer will abort on**. The driver inserts an oracle
+   using `fprintf(stderr, ...)` at that line. The execution order must be:
+   1. oracle `fprintf(stderr, "... reached\\n")` → fuzzer sees it on stderr
+   2. oracle `fprintf(stderr, "... triggered\\n")` if condition is true → fuzzer sees it
+   3. the buggy C operation runs → sanitizer aborts (also on stderr, after oracle)
+
+   If the oracle is placed AFTER the buggy operation, the sanitizer will abort first and
+   the oracle will never print. Example for an integer overflow bug — place oracle at the
+   line of the overflowing arithmetic (or just before the call that overflows), not after.
+   Use `1` as `condition_expr` only as a last resort; prefer an expression derived from the
+   fix patch (e.g. `size > INT_MAX` for CVE-2024-22860).
+
 7. Verify: `binary_path` exists, `build_info.json` parses, and `BBtargets.txt` has at least
    one non-comment entry whose file exists under `source/`.
 8. Print one final line: `INIT done: <one-sentence summary>`.
