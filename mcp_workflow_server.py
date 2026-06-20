@@ -33,17 +33,8 @@ except ImportError:
     sys.exit(1)
 
 from schemas import (
-    FuzzPlan,
-    WorkflowPhase,
-    BugPredicate,
-    Precondition,
-    RootCause,
-    TriggerPlan,
-    Breakpoint,
-    BatchPlanEntry,
-    WorkflowMetrics,
-    BuildInfo,
-    GreenFeedbackEntry,
+    FuzzPlan, WorkflowPhase, BugPredicate, Precondition, RootCause, TriggerPlan, Breakpoint,
+    BatchPlanEntry, WorkflowMetrics
 )
 from pydantic import ValidationError
 
@@ -158,7 +149,6 @@ def _atomic_write(path: Path, data: str) -> None:
 
 # Centralized phase transition rules (single source of truth)
 PHASE_TRANSITIONS = {
-    WorkflowPhase.INIT: [WorkflowPhase.PLAN],
     WorkflowPhase.PLAN: [WorkflowPhase.IMPLEMENT],
     WorkflowPhase.IMPLEMENT: [WorkflowPhase.EXECUTE],
     WorkflowPhase.EXECUTE: [WorkflowPhase.REFLECT, WorkflowPhase.SUCCESS],
@@ -170,12 +160,8 @@ PHASE_TRANSITIONS = {
 def get_phase_info(phase: str) -> Dict[str, Any]:
     """Get phase information including rules and allowed transitions."""
     phase_data = {
-        "INIT": {
-            "rules": ["R-IN1", "R-IN2", "R-IN3", "R-IN4", "R-IN5", "R-IN6", "R-IN7"],
-            "description": "Environment setup - extract sources, build target, static metadata",
-        },
         "PLAN": {
-            "rules": ["R-PL1", "R-PL2", "R-PL3", "R-PL4", "R-PL5", "R-PL6", "R-PL7", "R-PL8"],
+            "rules": ["R-PL1", "R-PL2", "R-PL3", "R-PL4", "R-PL5", "R-PL6"],
             "description": "Planning phase - analyze target, write BugPredicates, Preconditions, RootCauses, TriggerPlans"
         },
         "IMPLEMENT": {
@@ -231,8 +217,7 @@ def check_data_modification_permission(phase: str, data_block: str) -> bool:
         return False
     
     permissions = {
-        WorkflowPhase.INIT: {'BuildInfo', 'Metrics'},
-        WorkflowPhase.PLAN: {'BugPredicates', 'Preconditions', 'RootCauses', 'TriggerPlans', 'BuildInfo'},
+        WorkflowPhase.PLAN: {'BugPredicates', 'Preconditions', 'RootCauses', 'TriggerPlans'},
         WorkflowPhase.IMPLEMENT: {'ParameterSpace', 'FuzzPlan', 'Breakpoints'},
         WorkflowPhase.EXECUTE: {'Metrics', 'ParameterSpace'},
         WorkflowPhase.REFLECT: set(),  # Read-only phase
@@ -240,31 +225,6 @@ def check_data_modification_permission(phase: str, data_block: str) -> bool:
     }
     
     return data_block in permissions.get(phase_enum, set())
-
-
-def check_init_phase_completion(
-    workflow_content: str, source_code_dir: Optional[Path] = None
-) -> Tuple[bool, List[str]]:
-    """INIT phase complete when build metadata exists, binary is built, and dirty is false."""
-    missing_tasks: List[str] = []
-    bi = parse_json_block(workflow_content, "BuildInfo")
-    if not isinstance(bi, dict):
-        missing_tasks.append("R-IN3: BuildInfo block missing or invalid")
-        return False, missing_tasks
-    if not str(bi.get("build_cmd", "")).strip():
-        missing_tasks.append("R-IN3: build_cmd empty in BuildInfo")
-    bp = str(bi.get("binary_path", "")).strip()
-    if not bp:
-        missing_tasks.append("R-IN3: binary_path empty")
-    if bi.get("dirty", True):
-        missing_tasks.append("R-IN3: BuildInfo.dirty must be false after successful build")
-    if source_code_dir is not None and bp:
-        p = Path(bp)
-        if not p.is_absolute():
-            p = source_code_dir / p
-        if not p.is_file():
-            missing_tasks.append(f"R-IN3: binary not found at {p}")
-    return len(missing_tasks) == 0, missing_tasks
 
 
 def check_plan_phase_completion(workflow_content: str) -> Tuple[bool, List[str]]:
@@ -426,9 +386,6 @@ def check_phase_completion_unified(workflow_content: str, phase: str) -> Tuple[b
         - completed: bool - whether phase is complete
         - missing: List[str] - list of missing tasks
     """
-    if phase == "INIT":
-        completed, missing = check_init_phase_completion(workflow_content)
-        return completed, missing
     if phase == "PLAN":
         completed, missing = check_plan_phase_completion(workflow_content)
         return completed, missing
@@ -485,8 +442,6 @@ class MCPWorkflowServer:
         This wrapper allows us to pass server state to validation functions
         without changing the public API of check_phase_completion_unified.
         """
-        if phase == "INIT":
-            return check_init_phase_completion(workflow_content, self.source_code_dir)
         if phase == "EXECUTE":
             # For EXECUTE phase, pass the expected timestamp to verify agent actually updated
             return check_execute_phase_completion(workflow_content, self.last_metrics_update)
@@ -670,10 +625,9 @@ class MCPWorkflowServer:
                             type="text",
                             text=f"🚫 **G-2 VIOLATION**: Cannot modify '{target_block}' in {current_phase} phase.\n\n"
                                  f"**Allowed modifications per phase:**\n"
-                                 f"• INIT: BuildInfo, Metrics\n"
-                                 f"• PLAN: BugPredicates, Preconditions, RootCauses, TriggerPlans, BuildInfo\n"
+                                 f"• PLAN: BugPredicates, Preconditions, RootCauses, TriggerPlans\n"
                                  f"• IMPLEMENT: ParameterSpace, FuzzPlan, Breakpoints\n"
-                                 f"• EXECUTE: Metrics, ParameterSpace\n"
+                                 f"• EXECUTE: Metrics\n"
                                  f"• REFLECT: No data modifications allowed (read-only phase)"
                         )]
                     
@@ -765,12 +719,6 @@ class MCPWorkflowServer:
                         elif target_block == "Metrics":
                             if isinstance(content_json, dict):
                                 WorkflowMetrics.model_validate(content_json)
-                        elif target_block == "BuildInfo":
-                            if isinstance(content_json, dict):
-                                BuildInfo.model_validate(content_json)
-                        elif target_block == "GreenFeedbackHistory":
-                            if isinstance(content_json, list):
-                                [GreenFeedbackEntry.model_validate(x) for x in content_json]
                     except ValidationError as e:
                         error_msg = f"❌ **Validation Error for {target_block}:**\n\n"
                         for error in e.errors():
@@ -819,7 +767,6 @@ class MCPWorkflowServer:
                             type="text",
                             text=f"🚫 **G-1 VIOLATION**: Invalid phase transition from {current_phase} to {next_phase}.\n\n"
                                  f"**Allowed transitions:**\n"
-                                 f"• INIT → PLAN\n"
                                  f"• PLAN → IMPLEMENT\n"
                                  f"• IMPLEMENT → EXECUTE\n"
                                  f"• EXECUTE → REFLECT or SUCCESS\n"

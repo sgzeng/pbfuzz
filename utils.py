@@ -277,23 +277,24 @@ def check_tool_permission(phase, tool_name: str) -> bool:
         except ValueError:
             return False
     
-    # R-PL6: get_reaching_routes, get_corpus_status
+    # R-PL6: get_callers, get_callees, get_reaching_routes, get_corpus_status
     # R-IM5: extract_parameters, get_generator_api_doc
     # R-EX5: fuzz, get_generator_api_doc
-    # R-RF5: launch_interactive_gdb
+    # R-RF5: detect_deviation, launch_interactive_gdb, get_callers, get_callees
     allowed_tools = {
         WorkflowPhase.PLAN: {
-            'get_reaching_routes',
-            'get_corpus_status',
+            'get_callers', 'get_callees', 'get_reaching_routes', 
+            'get_corpus_status'
         },
         WorkflowPhase.IMPLEMENT: {
-            'extract_parameters', 'get_generator_api_doc', 'format_help'
+            'extract_parameters', 'get_generator_api_doc'
         },
         WorkflowPhase.EXECUTE: {
-            'fuzz', 'get_generator_api_doc', 'format_help'
+            'fuzz', 'get_generator_api_doc'
         },
         WorkflowPhase.REFLECT: {
-            'launch_interactive_gdb',
+            'detect_deviation', 'launch_interactive_gdb', 
+            'get_callers', 'get_callees'
         },
         WorkflowPhase.SUCCESS: set(),  # Terminal phase - no tools allowed
     }

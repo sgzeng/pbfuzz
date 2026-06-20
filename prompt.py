@@ -96,6 +96,7 @@ Code: {generator_code}
         if self._entry_fn_guids is None:
             self._entry_fn_guids = []
             self._entry_func_names = set()
+            # Cache entry function GUIDs (fuzzer first, then main) and their names
             for fn_guid, info in self.code_finder.function_infos.items():
                 if "FuzzerTestOneInput" in info[0]:
                     self._entry_fn_guids.append(fn_guid)
@@ -125,6 +126,7 @@ Code: {generator_code}
         """
         if self._target_locations is None:
             self._target_locations = self._collect_target_locations_from_file()
+            # Initialize target function names set
             self._target_func_names = set()
             for _, _, fn_guid in self._target_locations:
                 if fn_guid in self.code_finder.function_infos:
@@ -251,9 +253,11 @@ Code: {generator_code}
                     self.logger.debug(f"Skipping source for {fn_guid}: {exc}")
 
         project_info = 'for ' + self.project_name if self.project_name else ' '
+        # Add the main prompt with protocol (formatted with schema and template)
         formatted_prompt = self.PROPERTY_BASED_FUZZER_SYS_PROMPT.format(project_name=project_info)
         parts.append(formatted_prompt)
 
+        # Workflow memory system
         parts.append("\n<WORKFLOW_MEMORY>\n")
         parts.append("**CRITICAL**: Read .cursor/workflow_state.md FIRST to understand your current context and phase.\n")
         parts.append("**Configuration**: Complete project context is in .cursor/project_config.md\n")
@@ -261,14 +265,6 @@ Code: {generator_code}
         parts.append("**State Management**: Use workflow MCP server tools for all state operations\n")
         parts.append("**Autonomous Operation**: Work continuously until mission completion\n")
         parts.append("</WORKFLOW_MEMORY>")
-
-        parts.append(
-            "\n<POC_PROTOCOL>\n"
-            "When you confirm a PoC that triggers the bug locally, write the bytes to "
-            "`<output_dir>/candidate_poc.bin` and `touch <output_dir>/CANDIDATE_READY`. "
-            "The reproduction driver copies these to the run output directory as poc.bin.\n"
-            "</POC_PROTOCOL>\n"
-        )
 
         return "".join(parts)
 
@@ -295,7 +291,10 @@ Code: {generator_code}
         # Load function source codes for entry functions
         for fn_guid in self.entry_fn_guids:
             if fn_guid not in self._func_codes:
-                self._func_codes[fn_guid] = self.code_finder.get_function_source_code(fn_guid)
+                try:
+                    self._func_codes[fn_guid] = self.code_finder.get_function_source_code(fn_guid)
+                except Exception as exc:
+                    self.logger.debug(f"Skipping source for {fn_guid}: {exc}")
         
         # Collect all function GUIDs to avoid duplicates
         included_func_guids = set()
@@ -305,17 +304,23 @@ Code: {generator_code}
         for fn_guid in self.entry_fn_guids:
             if fn_guid not in included_func_guids:
                 included_func_guids.add(fn_guid)
-                filepath = self.code_finder.get_fp_from_func_id(fn_guid)
-                if filepath:
-                    file_functions[filepath].append(fn_guid)
+                try:
+                    filepath = self.code_finder.get_fp_from_func_id(fn_guid)
+                    if filepath:
+                        file_functions[filepath].append(fn_guid)
+                except Exception:
+                    pass
                     
         # Add target location functions
         for _, _, fn_guid in self.target_locations:
-            if fn_guid not in included_func_guids:
+            if fn_guid and fn_guid not in included_func_guids:
                 included_func_guids.add(fn_guid)
-                filepath = self.code_finder.get_fp_from_func_id(fn_guid)
-                if filepath:
-                    file_functions[filepath].append(fn_guid)
+                try:
+                    filepath = self.code_finder.get_fp_from_func_id(fn_guid)
+                    if filepath:
+                        file_functions[filepath].append(fn_guid)
+                except Exception:
+                    pass
         
         # Output functions grouped by file, sorted by filepath
         for filepath in sorted(file_functions.keys()):

@@ -16,16 +16,13 @@ graph LR
     REFLECT --> PLAN
 ```
 
-> **Note**: INIT (build + initial BBtargets + initial oracle) is performed by the reproduction driver before this workflow starts. The binary already exists, oracles are already inserted, and `BuildInfo.dirty` is false on entry. This workflow begins at PLAN.
-
 ### PLAN Phase Rules
-- **R-PL1**: On first entry, must read `static_results/BBtargets.txt` (Target Locations: `relative/path.c:LINE[,condition_expr]`) and the relevant source files via shell.
-- **R-PL2**: Must write/update BugPredicates based on Target Locations.
-- **R-PL3**: Must write/update Preconditions, RootCauses, and TriggerPlans based on source analysis, `inputs/fix.patch`, CVE description, and reflection from prior fuzz rounds.
+- **R-PL1**: On first entry, must read project_config.md Source Code blocks (entry + target functions) and Target Locations
+- **R-PL2**: Must write/update BugPredicates based on Target Locations
+- **R-PL3**: Must write/update Preconditions, RootCauses, and TriggerPlans based on Source Code analysis and reflection insights
 - **R-PL4**: Forbidden to perform any manual test. Must apply RULE_FLOW to verify your hypothesis.
-- **R-PL5**: Must apply RULE_IMPLICIT_BEHAVIOR and RULE_MULTI_TARGETS.
-- **R-PL6**: ALLOWED TOOLS: Workflow MCP Tools, **`insert_oracle`** (optional refinement; the driver already inserted a baseline oracle for every BBtargets entry).
-- **R-PL7**: When you need a tighter oracle, call **`insert_oracle(file, line, condition_expr, cve_id)`** to refine; the build server upserts BBtargets.txt automatically and marks `BuildInfo.dirty=true` so EXECUTE rebuilds.
+- **R-PL5**: Must apply RULE_IMPLICIT_BEHAVIOR and RULE_MULTI_TARGETS
+- **R-PL6**: ALLOWED TOOLS: get_reaching_routes, get_corpus_status (if corpus server available), get_callers, get_callees (if callgraph server available), and Workflow MCP Tools
 
 ### IMPLEMENT Phase Rules
 - **R-IM1**: Must take ALL TriggerPlans and convert input constraints into concrete ParameterSpace
@@ -35,19 +32,19 @@ graph LR
 - **R-IM5**: ALLOWED TOOLS: extract_parameters, get_generator_api_doc, and Workflow MCP Tools
 
 ### EXECUTE Phase Rules
-- **R-EX0**: If `BuildInfo.dirty == true`, MUST call **`rebuild_project()`** before **`fuzz`**. If rebuild fails, transition to PLAN.
 - **R-EX1**: Must execute fuzz MCP tool using FuzzPlan and Breakpoints from IMPLEMENT phase
 - **R-EX2**: Must update Metrics after fuzzing completes
 - **R-EX3**: If bug triggered (pattern matched), must transition to SUCCESS
 - **R-EX4**: If bug not triggered, must transition to REFLECT
-- **R-EX5**: ALLOWED TOOLS: **`rebuild_project`**, fuzz, get_generator_api_doc, and Workflow MCP Tools; other actions are forbidden
+- **R-EX5**: ALLOWED TOOLS: fuzz, get_generator_api_doc, and Workflow MCP Tools; other actions are forbidden
 
 ### REFLECT Phase Rules
 - **R-RF1**: Must analyze why testcases in FuzzPlan failed to trigger the bug. Focus only on testcase failure analysis, not memory updates. Transition to PLAN when ready to update memory based on findings.
-- **R-RF2**: For no-reach testcases in FuzzPlan, must analyze why the execution path did not reach the target (read related code, compare with preconditions, and use launch_interactive_gdb when needed)
+- **R-RF2**: For no-reach testcases in FuzzPlan, must use detect_deviation to identify which preconditions were not satisfied
 - **R-RF3**: For reach/no-trigger testcases in FuzzPlan, must identify why bug predicate was not triggered by tracing variable dependencies backward
 - **R-RF4**: Must transition to PLAN phase if performed more than THREE manual test. This budget resets upon re-entering REFLECT.
-- **R-RF5**: ALLOWED TOOLS: launch_interactive_gdb and Workflow MCP Tools
+- **R-RF5**: ALLOWED TOOLS: launch_interactive_gdb, detect_deviation (if deviation server available), get_callers, get_callees (if callgraph server available), and Workflow MCP Tools
+
 ### RULE_IMPLICIT_BEHAVIOR:
 - Never assume explicit code paths are the only ones
 - Always account for implicit library behavior, special cases and compatibility hacks.
@@ -55,7 +52,7 @@ graph LR
 
 ### GATEKEEPER Rules (STRICTLY ENFORCED)
 - **G-1**: RULE_PHASE_GATING
-- **G-2**: Memory data modification permissions: PLAN (BugPredicates, Preconditions, RootCauses, TriggerPlans, BuildInfo), IMPLEMENT (ParameterSpace, FuzzPlan, Breakpoints), EXECUTE (Metrics, ParameterSpace), REFLECT (none - read-only)
+- **G-2**: Memory data modification permissions: PLAN (BugPredicates, Preconditions, RootCauses, TriggerPlans), IMPLEMENT (ParameterSpace, FuzzPlan, Breakpoints), EXECUTE (Metrics, ParameterSpace), REFLECT (none - read-only)
 - **G-3**: RULE_FLOW
 - **G-4**: Auto-transition when phase tasks completed
 
@@ -77,7 +74,7 @@ graph LR
 
 ### RULE_MAGMA: Do not analyze Magma benchmark instrumentation. See magma.md.
 
-### RULE_FUZZ_TOOL: Only fuzz MCP tool in EXECUTE phase can declare PoC. DO NOT write `candidate_poc.bin` or `CANDIDATE_READY` by hand.
+### RULE_FUZZ_TOOL: Only fuzz MCP tool in EXECUTE phase can declare PoC
 
 ### RULE_MULTI_TARGETS: Triggering one target is sufficient. If a target has multiple triggering conditions, satisfy any bug predicate is sufficient. Prioritize simpler bug predicates.
 
@@ -91,25 +88,12 @@ graph LR
 ```json
 {
   "phase": "PLAN",
-  "status": "Driver completed INIT (build + oracle insertion). Ready for PLAN.",
-  "current_task": "Derive BugPredicates, TriggerPlans from BBtargets.txt + fix.patch",
-  "next_action": "Read BBtargets.txt and inputs/fix.patch; refine oracle if needed, then transition_phase(IMPLEMENT)"
+  "status": "Starting directed fuzzing workflow",
+  "current_task": "Analyze target and create initial plan",
+  "next_action": "Read project_config.md and extract BugPredicates"
 }
 ```
 <!-- DYNAMIC:STATE:END -->
-
-<!-- DYNAMIC:BUILD_INFO:START -->
-## BuildInfo
-```json
-{
-  "build_cmd": "",
-  "binary_path": "",
-  "dirty": false,
-  "last_build_log_excerpt": "",
-  "build_attempts": 0
-}
-```
-<!-- DYNAMIC:BUILD_INFO:END -->
 
 <!-- DYNAMIC:BUG_PREDICATES:START -->
 ## BugPredicates

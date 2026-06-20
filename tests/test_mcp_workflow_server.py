@@ -77,7 +77,7 @@ def test_parse_json_block(temp_workflow_dir):
     # Test State block
     state = parse_json_block(content, "State")
     assert isinstance(state, dict)
-    assert state['phase'] == 'INIT'
+    assert state['phase'] == 'PLAN'
     assert 'status' in state
     
     # Test empty lists
@@ -120,7 +120,6 @@ def test_replace_json_block(temp_workflow_dir):
 def test_validate_phase_transition():
     """Test phase transition validation"""
     # Valid transitions
-    assert validate_phase_transition("INIT", "PLAN") == True
     assert validate_phase_transition("PLAN", "IMPLEMENT") == True
     assert validate_phase_transition("IMPLEMENT", "EXECUTE") == True
     assert validate_phase_transition("EXECUTE", "REFLECT") == True
@@ -128,7 +127,6 @@ def test_validate_phase_transition():
     assert validate_phase_transition("REFLECT", "PLAN") == True
     
     # Invalid transitions
-    assert validate_phase_transition("INIT", "IMPLEMENT") == False
     assert validate_phase_transition("PLAN", "EXECUTE") == False
     assert validate_phase_transition("IMPLEMENT", "REFLECT") == False
     assert validate_phase_transition("EXECUTE", "PLAN") == False
@@ -137,8 +135,6 @@ def test_validate_phase_transition():
 
 def test_check_data_modification_permission():
     """Test data modification permissions for each phase"""
-    assert check_data_modification_permission("INIT", "BuildInfo") == True
-    assert check_data_modification_permission("INIT", "BugPredicates") == False
     # PLAN phase permissions
     assert check_data_modification_permission("PLAN", "BugPredicates") == True
     assert check_data_modification_permission("PLAN", "Preconditions") == True
@@ -147,7 +143,6 @@ def test_check_data_modification_permission():
     assert check_data_modification_permission("PLAN", "FuzzPlan") == False
     assert check_data_modification_permission("PLAN", "Breakpoints") == False
     assert check_data_modification_permission("PLAN", "Metrics") == False
-    assert check_data_modification_permission("PLAN", "BuildInfo") == True
     
     # IMPLEMENT phase permissions
     assert check_data_modification_permission("IMPLEMENT", "ParameterSpace") == True
@@ -352,7 +347,7 @@ def test_workflow_integration_flow(temp_workflow_dir):
     # 1. Start in PLAN phase
     content = workflow_file.read_text()
     state = parse_json_block(content, "State")
-    assert state['phase'] == 'INIT'
+    assert state['phase'] == 'PLAN'
     
     # 2. Add PLAN phase data
     content = replace_json_block(content, "BugPredicates", [
@@ -467,9 +462,7 @@ def test_get_phase_info():
     # Test PLAN phase
     info = get_phase_info("PLAN")
     assert "Planning phase" in info['description']
-    assert info['rules'] == [
-        "R-PL1", "R-PL2", "R-PL3", "R-PL4", "R-PL5", "R-PL6", "R-PL7", "R-PL8",
-    ]
+    assert info['rules'] == ["R-PL1", "R-PL2", "R-PL3", "R-PL4", "R-PL5", "R-PL6"]
     
     # Test IMPLEMENT phase
     info = get_phase_info("IMPLEMENT")
@@ -501,7 +494,6 @@ def test_get_phase_info():
 
 def test_get_allowed_next_phases():
     """Test get_allowed_next_phases helper function"""
-    assert get_allowed_next_phases("INIT") == ["PLAN"]
     # Test PLAN phase
     next_phases = get_allowed_next_phases("PLAN")
     assert next_phases == ["IMPLEMENT"]
@@ -534,17 +526,18 @@ def test_get_current_phase_info_integration(temp_workflow_dir):
     """Test get_current_phase integration with workflow state"""
     workflow_file = temp_workflow_dir['workflow_file']
     
-    # Test 1: INIT phase (template default)
+    # Test 1: PLAN phase
     content = workflow_file.read_text()
     state = parse_json_block(content, "State")
-    assert state['phase'] == 'INIT'
+    assert state['phase'] == 'PLAN'
     
     phase_info = get_phase_info(state['phase'])
     next_phases = get_allowed_next_phases(state['phase'])
     
-    assert "Environment setup" in phase_info['description']
-    assert next_phases == ["PLAN"]
-    print("✓ Test 1: INIT phase info correct")
+    assert "Planning phase" in phase_info['description']
+    assert phase_info['rules'] == ["R-PL1", "R-PL2", "R-PL3", "R-PL4", "R-PL5", "R-PL6"]
+    assert next_phases == ["IMPLEMENT"]
+    print("✓ Test 1: PLAN phase info correct")
     
     # Test 2: IMPLEMENT phase
     content = replace_json_block(content, "State", {
@@ -614,7 +607,6 @@ def test_get_current_phase_info_integration(temp_workflow_dir):
 def test_phase_rules_coverage():
     """Test that all phases with rules have correct rule naming"""
     phases_with_rules = {
-        "INIT": "R-IN",
         "PLAN": "R-PL",
         "IMPLEMENT": "R-IM",
         "EXECUTE": "R-EX",

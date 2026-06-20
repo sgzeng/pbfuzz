@@ -635,35 +635,11 @@ class FuzzResult(BaseModel):
 # Workflow State Schemas
 class WorkflowPhase(str, Enum):
     """Workflow phases for directed fuzzing."""
-    INIT = "INIT"
     PLAN = "PLAN"
     IMPLEMENT = "IMPLEMENT"
     EXECUTE = "EXECUTE"
     REFLECT = "REFLECT"
     SUCCESS = "SUCCESS"
-
-
-class BuildInfo(BaseModel):
-    """Build / oracle rebuild tracking for CyberGym integration."""
-    model_config = ConfigDict(extra="forbid")
-
-    build_cmd: str = Field(default="", description="Shell command to build the target")
-    binary_path: str = Field(default="", description="Path to built executable (relative to source root or absolute)")
-    dirty: bool = Field(default=False, description="True after oracle insert until rebuild succeeds")
-    last_build_log_excerpt: str = Field(default="", description="Tail of last build log")
-    build_attempts: int = Field(default=0, ge=0)
-
-
-class GreenFeedbackEntry(BaseModel):
-    """One CyberGym green-agent validation round-trip."""
-    model_config = ConfigDict(extra="ignore")
-
-    outer_round: int = Field(default=0, ge=0)
-    candidate_poc_sha256: str = Field(default="", description="Hex digest of PoC bytes tested")
-    exit_code: Optional[int] = Field(default=None)
-    output_excerpt: str = Field(default="", description="Truncated stdout/stderr from vulnerable container")
-    source: str = Field(default="green")
-    note: str = Field(default="")
 
 
 class WorkflowState(BaseModel):
@@ -707,10 +683,10 @@ class WorkflowMetrics(BaseModel):
 class WorkflowMemory(BaseModel):
     """Complete workflow memory state."""
     state: WorkflowState = Field(default_factory=lambda: WorkflowState(
-        phase=WorkflowPhase.INIT,
+        phase=WorkflowPhase.PLAN,
         status="Starting directed fuzzing workflow",
-        current_task="Environment setup and build",
-        next_action="Read project_config.md; complete INIT rules then transition to PLAN",
+        current_task="Analyze target and create initial plan",
+        next_action="Read project_config.md and extract BugPredicates"
     ), description="Current workflow state")
     bug_predicates: List[BugPredicate] = Field(default_factory=list, description="Bug predicates from target locations")
     preconditions: List[Precondition] = Field(default_factory=list, description="Reaching preconditions")

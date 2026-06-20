@@ -1,5 +1,5 @@
 {
-  "static_result_folder": "./tests/fixtures/static_analysis_readelf",
+  "static_result_folder": "./tests/fixtures/readelf_static_analysis",
   "llm_model": "gemini-2.5-pro",
   "source_code_folder": "./tests/fixtures",
   "cmd": ["./tests/fixtures/readelf", "@@"],

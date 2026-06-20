@@ -9,7 +9,7 @@ Find proof-of-concept inputs that violate safety properties in C/C++ programs us
 ## Tech Stack
 - **Fuzzing**: Property-based with custom generators
 - **Debugging**: LLDB + breakpoints
-- **Analysis**: Testcase corpus and reaching-route summaries
+- **Analysis**: Static call graphs, distance metrics, testcase corpus
 - **LLM**: {llm_model}
 <!-- STATIC:TECH_STACK:END -->
 
@@ -31,9 +31,11 @@ Find proof-of-concept inputs that violate safety properties in C/C++ programs us
 <!-- STATIC:TOOLS_AND_REQUIREMENTS:START -->
 ## Available Tools
 **Analysis MCP Tools**
-- `get_reaching_routes`: Routes and input files that reach targets
-- `get_corpus_status`: Corpus analysis progress
-- `extract_parameters`: Parameter space from reaching testcases
+- `get_callers`, `get_callees`: Call graph analysis (requires callgraph server available)
+- `get_reaching_routes`: Routes and input files that reach targets (requires corpus server available)
+- `get_corpus_status`: Corpus analysis progress (requires corpus server available)
+- `extract_parameters`: Parameter space from reaching testcases (requires corpus server available)
+- `detect_deviation`: Find execution deviations from expected paths (requires deviation server available)
 - `get_generator_api_doc`: Generator API reference
 - `fuzz`: Execute fuzzing with plan and generator
 - `launch_interactive_gdb`: Launch interactive GDB session for advanced deviation analysis, root cause analysis, and TriggerPlan verification
@@ -47,24 +49,22 @@ Find proof-of-concept inputs that violate safety properties in C/C++ programs us
 
 <!-- STATIC:TARGET_INFO:START -->
 ## Target Information
-- **Task ID**: {task_id}
 - **Binary**: {cmd}
 - **Source Code**: {source_code_folder}
 - **Output Directory**: {output_dir}
 - **Reached Pattern**: {reached_pattern}
 - **Triggered Pattern**: {triggered_pattern}
-- **BUILD_CMD** (shell): `{build_cmd}`
-- **BINARY_PATH** (relative to source root or absolute): `{binary_path}`
-- **RUN_CMD_TEMPLATE** (use `@@` for input file path): `{run_cmd_template}`
-- **Target Locations**: see `{bbtargets_path}` (one `relative/path.c:LINE[,condition_expr]` per line)
 <!-- STATIC:TARGET_INFO:END -->
 
-<!-- STATIC:BUILD_INFO:START -->
-## Build Metadata (also mirrored to `build_info.json` at workspace root)
-```json
-{build_info_json}
-```
-<!-- STATIC:BUILD_INFO:END -->
+<!-- STATIC:SOURCE_CODE_BLOCKS:START -->
+## Source Code Blocks
+{source_code_blocks}
+<!-- STATIC:SOURCE_CODE_BLOCKS:END -->
+
+<!-- STATIC:TARGET_LOCATIONS:START -->
+## Target Locations
+{target_locations}
+<!-- STATIC:TARGET_LOCATIONS:END -->
 
 <!-- STATIC:FUZZER_CONFIG:START -->
 ## Fuzzer Configuration

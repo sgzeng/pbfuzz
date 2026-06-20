@@ -181,6 +181,7 @@ def check_project_structure():
         'launcher.py',
         'property_based_fuzzer.py',
         'requirements.txt',
+        'mcp_call_graph_server.py',
         'mcp_fuzzer_server.py',
     ]
     
@@ -199,9 +200,9 @@ def check_project_structure():
 def test_mcp_server_startup():
     """Test if MCP servers can start properly"""
     servers = [
+        ('mcp_call_graph_server.py', 'CallGraph MCP Server'),
         ('mcp_fuzzer_server.py', 'Fuzzer MCP Server'),
         ('mcp_corpus_server.py', 'Corpus MCP Server'),
-        ('mcp_format_helper_server.py', 'Format Helper MCP Server'),
     ]
     
     results = []

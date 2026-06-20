@@ -29,6 +29,7 @@ class Config:
                  'triggered_pattern',
                  'max_iters',
                  'exec_timeout_sec',
+                 'agent_timeout_sec',
                  'disable_mcp',
                  # Debugger related attributes
                  'lldb_path',
@@ -98,21 +99,23 @@ class Config:
             self.source_code_dir = Path(args.source_code_folder)
         if hasattr(args, 'initial_corpus_dir') and args.initial_corpus_dir:
             self.initial_corpus_dir = Path(args.initial_corpus_dir)
-        if getattr(args, "output_dir", None) is not None:
+        if hasattr(args, 'output_dir'):
             self.output_dir = Path(args.output_dir)
-        if getattr(args, "llm_model", None):
+        if hasattr(args, 'llm_model'):
             self.llm_model = args.llm_model
         if hasattr(args, 'debug_enabled'):
             self.debug_enabled = args.debug_enabled
-        # Handle fuzzer configuration options (do not overwrite JSON from -config with CLI None)
-        if getattr(args, "reached_pattern", None):
+        # Handle fuzzer configuration options
+        if hasattr(args, 'reached_pattern') and args.reached_pattern:
             self.reached_pattern = args.reached_pattern
-        if getattr(args, "triggered_pattern", None):
+        if hasattr(args, 'triggered_pattern') and args.triggered_pattern:
             self.triggered_pattern = args.triggered_pattern
-        if getattr(args, "max_iters", None) is not None:
+        if hasattr(args, 'max_iters') and args.max_iters is not None:
             self.max_iters = args.max_iters
-        if getattr(args, "exec_timeout_sec", None) is not None:
+        if hasattr(args, 'exec_timeout_sec') and args.exec_timeout_sec is not None:
             self.exec_timeout_sec = args.exec_timeout_sec
+        if hasattr(args, 'agent_timeout_sec') and args.agent_timeout_sec is not None:
+            self.agent_timeout_sec = args.agent_timeout_sec
         if hasattr(args, 'disable_mcp'):
             self.disable_mcp = args.disable_mcp
         # Apply debug settings
@@ -145,17 +148,9 @@ class Config:
         self.reached_pattern = ''
         self.triggered_pattern = ''
         self.max_iters = 1000
-        self.exec_timeout_sec = 2
+        self.exec_timeout_sec = 3
+        self.agent_timeout_sec = 3600
         # Precondition inference defaults
         self.enable_static_precondition_inference = True
         # MCP configuration default
         self.disable_mcp = False
-        # Standalone reproduction / optional task metadata
-        self.cve_id = ""
-        self.task_id = ""
-        self.build_cmd = ""
-        self.binary_path = ""
-        self.run_cmd_template = ""
-        self.build_cwd = ""
-        self.cybergym_cwd = ""
-        self.patch_available = True
