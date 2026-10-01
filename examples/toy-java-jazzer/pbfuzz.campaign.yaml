@@ -1,0 +1,34 @@
+version: 1
+id: toy-java-jazzer
+confirmed: true
+target:
+  repo: /mnt/work/pbfuzz/pbfuzz-dsh/examples/toy-java-jazzer
+  language: java
+bug:
+  targets:
+  - location: Toy.java:25
+    condition: data.length >= 5 && (data[4] & 0xFF) == 0x99, inside the already-taken branch where data.length >= 4 and data[0..3] == 'JAVA'
+build:
+  cmd: ./build.sh
+entry:
+  kind: api
+  run_cmd: /home/haochen/.local/opt/jazzer/jazzer --target_class=Fuzz --cp=. -- @@
+  input_channel: file
+  harness: Fuzz.java
+  harness_function: fuzzerTestOneInput
+  cwd: /mnt/work/pbfuzz/pbfuzz-dsh/examples/toy-java-jazzer
+oracle:
+  mode: preexisting
+  reached_pattern: 'toy: magic JAVA prefix seen'
+  triggered_pattern: 'toy: crash byte 0x99 seen'
+tracer: 'off'
+analysis:
+  corpus:
+    enabled: true
+    seeds_dir: /mnt/work/pbfuzz/pbfuzz-dsh/examples/toy-java-jazzer/seeds
+  deviation:
+    enabled: false
+    mode: target_only
+    disabled_reason: 'deviation detection needs breakpoint tracing, and campaign tracer is off because the engine''s own check_tracer failed the jdb backend on this target (breakpoint Toy.java:25: resolved=None hits=0; the piped jdb session consumes its `exit` before the JVM boots, so the class never loads). Once a jdb backend binds breakpoints, turn the tracer back on and set analysis.deviation.enabled: true again.'
+output:
+  dir: /mnt/work/pbfuzz/pbfuzz-dsh/examples/toy-java-jazzer/.pbfuzz/toy-java-jazzer

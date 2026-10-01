@@ -1,0 +1,89 @@
+{
+  "name": "@pbfuzz/dsh-pbfuzz",
+  "description": "PBFuzz as a DeepSeek Harness plugin: campaign questionnaire, PIER guards, directed-fuzzing tools and the auxiliary-analysis provider registry",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-plugins",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-api-session-controller"
+      ]
+    }
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/**/*.d.ts",
+    "cordis.patch.yml",
+    "skills/**",
+    "canaries/**"
+  ],
+  "scripts": {
+    "build": "tsc -b && node scripts/bundle-client.mjs",
+    "bundle:client": "node scripts/bundle-client.mjs",
+    "check:client": "node scripts/bundle-client.mjs --check",
+    "prepare": "pnpm run build",
+    "typecheck": "tsc -b --pretty false",
+    "test": "vitest run --dir tests"
+  },
+  "dependencies": {
+    "yaml": "^2.6.0",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.1 <5.0.0",
+    "@deepseek-ai/dsh-agent": ">=0.1.5-rc.1 <0.2.0",
+    "@deepseek-ai/dsh-commands": ">=0.1.5-rc.1 <0.2.0",
+    "@deepseek-ai/dsh-jobs": ">=0.1.5-rc.1 <0.2.0",
+    "@deepseek-ai/dsh-llm": ">=0.1.5-rc.1 <0.2.0",
+    "@deepseek-ai/dsh-session": ">=0.1.5-rc.1 <0.2.0",
+    "@deepseek-ai/dsh-session-projection": ">=0.1.5-rc.1 <0.2.0",
+    "@deepseek-ai/dsh-settings": ">=0.1.5-rc.1 <0.2.0",
+    "@deepseek-ai/dsh-skill": ">=0.1.5-rc.1 <0.2.0",
+    "@deepseek-ai/dsh-system-prompt": ">=0.1.5-rc.1 <0.2.0",
+    "@deepseek-ai/dsh-tools": ">=0.1.5-rc.1 <0.2.0",
+    "@deepseek-ai/dsh-user-questions": ">=0.1.5-rc.1 <0.2.0",
+    "@deepseek-ai/schemastery": ">=3.18.1 <4.0.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-agent": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-commands": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-jobs": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-llm": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-session": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-session-projection": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-settings": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-skill": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-system-prompt": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-tools": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-user-questions": "0.1.5-rc.1",
+    "@deepseek-ai/schemastery": "3.18.2",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pbfuzz-engine"
+version = "0.1.0"
+description = "PBFuzz property-based fuzzing engine — the Python sidecar behind the dsh-pbfuzz plugin."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+  # PyYAML is the only runtime dependency: campaigns are YAML. Campaign validation is
+  # hand-written against contracts/campaign.schema.json rather than delegating to
+  # `jsonschema`, because every engine error must carry a diagnosis and concrete remedies
+  # (contracts/engine-rpc.schema.json) and a generic validator cannot produce those.
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+pbfuzz-engine = "pbfuzz_engine.__main__:main"
+
+[tool.setuptools.packages.find]
+# `include` rather than an explicit list so the tracers/ and deviation/ subpackages W3 adds
+# are picked up without another edit to this file.
+include = ["pbfuzz_engine*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "linux_only: needs a Linux-only facility (rlimit AS enforcement, gdb, LTO toolchain); skipped elsewhere.",
+]

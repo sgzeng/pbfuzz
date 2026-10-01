@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pbfuzz-settings.schema.json",
+  "title": "PbfuzzSettings",
+  "description": "Settings namespace `pbfuzz` — pbfuzz's OWN behaviour, edited in the DSH web settings card. Nothing about the target project appears here; that all lives in the campaign. W1 turns this into the schemastery `Config` it hands to `settings.installSection`, and W6 renders the card from the same schema. Enforcement runs in-process (a native `ctx.tools.guard()` inside the host plugin), so there is no settings snapshot file for a separate process to read.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tools": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Which auxiliary analysis tools are enabled. A tool enabled here is exercised for real by the startup self-check; a tool disabled here has its pbfuzz tools hidden by `ctx.tools.restrict()` and denied by the `phase_gate` hook.",
+      "properties": {
+        "staticAnalysis": {
+          "type": "string",
+          "enum": ["off", "kanalyzer"],
+          "default": "off",
+          "description": "Static analysis provider. `kanalyzer` is selectable only when the dsh-kanalyzer plugin is installed; the card greys the option out with an install hint otherwise."
+        },
+        "corpusAnalysis": { "type": "boolean", "default": true },
+        "deviationDetection": {
+          "type": "boolean",
+          "default": true,
+          "description": "Needs static analysis for critical-BB mode; degrades to target-only without it."
+        },
+        "tracer": { "type": "string", "enum": ["auto", "gdb", "lldb", "pymon", "jdb", "off"], "default": "auto" },
+        "interactiveDebug": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow the agent an interactive debugger through DSH's `terminal`, replacing the old gdb FIFO MCP server."
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How long one campaign may run. A native PIER driver (`agent/turn-stopping` + `ctx.jobs.onJobDone`) advances the loop unattended, so these three caps are the ONLY brakes on an unattended run — they must actually stop it (writing `phase: STOPPED`), not merely stop nudging it.",
+      "properties": {
+        "maxPierRounds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 5,
+          "description": "PLAN→REFLECT cycles allowed. On reaching it, the campaign guard denies REFLECT→PLAN and `pbfuzz_reflect` writes STOPPED instead."
+        },
+        "campaignWallTimeMin": { "type": "integer", "minimum": 1, "default": 30 },
+        "autoContinue": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether the PIER driver steers a natural turn-stop back into the loop while the campaign is active, not yet at a terminal phase, and not waiting on the user or a running fuzz job."
+        },
+        "maxConsecutiveForcedContinues": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "default": 3,
+          "description": "DSH's own turn-stopping seam has no loop cap of its own, so the driver limits itself: after this many consecutive forced continuations in the same phase/round it stops steering. In headless mode (no user can re-arm it) it writes STOPPED instead of merely giving up; in an interactive session it just lets the turn end, and any user message resets the counter."
+        }
+      }
+    },
+    "fuzzing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxIters": { "type": "integer", "minimum": 1, "default": 1000 },
+        "execTimeoutSec": { "type": "number", "exclusiveMinimum": 0, "default": 3 },
+        "fuzzTimeoutSec": { "type": "number", "exclusiveMinimum": 0, "default": 600 },
+        "generatorTimeoutSec": { "type": "number", "exclusiveMinimum": 0, "default": 1 },
+        "stage1MinConcreteParams": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 5,
+          "description": "Minimum concrete batch-plan entries before the sampler takes over, so stage 1 actually tests the hypothesis."
+        },
+        "enableDebuggerForAll": {
+          "type": "boolean",
+          "default": false,
+          "description": "Trace every iteration rather than only stage-1 concrete runs. Correct but slow."
+        }
+      }
+    },
+    "onboarding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "interviewPolicy": {
+          "type": "string",
+          "enum": ["always", "when-missing", "never"],
+          "default": "when-missing",
+          "description": "`when-missing` asks only what the agent could not infer — the default that keeps onboarding cheap. `never` is the headless mode: a missing required field is an error, not a question."
+        },
+        "deriveTargetFrom": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["patch", "cve", "crashTrace"] },
+          "default": ["patch", "cve", "crashTrace"],
+          "description": "Which bug-information forms the agent may derive a target location from."
+        },
+        "defaultOutputRoot": { "type": "string", "default": ".pbfuzz" },
+        "confirmTimeoutMin": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Minutes to wait for a human to answer the campaign-review (Approve/Revise) panel before `pbfuzz_campaign confirm` gives up with an error the agent can recover from. `0` (the default) waits indefinitely, the idiomatic DSH behaviour; set a bound for unattended/monitored deployments so a session cannot idle forever on an absent human."
+        }
+      }
+    },
+    "oracleDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Defaults the questionnaire proposes; a campaign may override them.",
+      "properties": {
+        "canaryOnTrigger": { "type": "string", "enum": ["abort", "log"], "default": "log" },
+        "reachedPattern": { "type": "string", "default": "PBFUZZ_REACHED:\\s*(\\S+)" },
+        "triggeredPattern": { "type": "string", "default": "PBFUZZ_TRIGGERED:\\s*(\\S+)" }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pythonPath": { "type": "string", "default": "python3", "description": "Interpreter for the engine sidecar. Changing it restarts the sidecar." },
+        "gdbPath": { "type": "string", "default": "gdb" },
+        "generatorMemLimitMB": { "type": "integer", "minimum": 16, "default": 512, "description": "Generators are model-written code; they run in a subprocess under rlimit, never in-process." },
+        "generatorCpuLimitSec": { "type": "integer", "minimum": 1, "default": 10 },
+        "logLevel": { "type": "string", "enum": ["error", "warn", "info", "debug"], "default": "info" },
+        "fuzzBackground": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run `pbfuzz_fuzz` as a `ctx.jobs` background job. A headless run (`onboarding.interviewPolicy: never` / `/pbfuzz run`) always runs it in the foreground instead, regardless of this setting — a one-shot headless process exits as soon as its turn goes idle and would kill a background fuzz job before it finishes."
+        }
+      }
+    },
+    "guards": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "In-process enforcement (a native `ctx.tools.guard()` in the host plugin) governing state writes, phase legality and shell commands that would tamper with campaign state.",
+      "properties": {
+        "bashGuard": { "type": "boolean", "default": true, "description": "Deny shell commands that would edit state files or metrics behind the guard's back." },
+        "tamperLedger": { "type": "boolean", "default": true },
+        "hideToolsWithoutCampaign": { "type": "boolean", "default": false, "description": "Keep the pbfuzz tools out of the model's tool list until a confirmed campaign exists. Off by default: the visible set is otherwise constant for a whole session, and every change to it costs the model's prompt prefix cache." }
+      }
+    },
+    "status": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Read-only in the card; written by the host after `/pbfuzz selfcheck` runs the environment self-check (engine ping, python/contracts version, sandbox round trip, static-analysis/tracer availability). Cached with a TTL so a campaign start reads this instead of re-running it on the critical path.",
+      "properties": {
+        "envSelfcheck": {
+          "type": "object",
+          "additionalProperties": false,
+          "default": { "checkedAt": "", "ttlExpiresAt": "", "overall": "", "items": [] },
+          "properties": {
+            "checkedAt": { "type": "string", "default": "" },
+            "ttlExpiresAt": { "type": "string", "default": "" },
+            "overall": { "type": "string", "enum": ["", "pass", "warn", "fail"], "default": "" },
+            "items": {
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "status"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "status": { "type": "string", "enum": ["pass", "warn", "fail", "disabled", "skipped"] },
+                  "reason": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

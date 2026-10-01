@@ -1,0 +1,27 @@
+{
+  "name": "pbfuzz-dsh",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "test:engine": "cd engine && ${PBFUZZ_PYTHON:-python3} -m pytest -q",
+    "check:clients": "node packages/dsh-pbfuzz/scripts/bundle-client.mjs && node packages/dsh-kanalyzer/scripts/build-client.mjs",
+    "test:all": "pnpm run test && pnpm run check:clients && pnpm run test:engine",
+    "codegen": "node scripts/codegen.mjs",
+    "codegen:check": "node scripts/codegen.mjs --check"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "json-schema-to-typescript": "^15.0.4",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

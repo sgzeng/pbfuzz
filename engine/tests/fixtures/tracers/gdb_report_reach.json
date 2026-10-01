@@ -1,0 +1,40 @@
+{
+  "_provenance": "CAPTURED from a real run: GNU gdb (Ubuntu 15.1-1ubuntu1~24.04.1) 15.1, Linux x86-64, cc -g -O0 on the test_tracers_integration toy (paths rewritten to toy.c)",
+  "breakpoints": [
+    {
+      "location": "toy.c:17",
+      "function": "target",
+      "resolved": true,
+      "hit_times": 1,
+      "hits": [
+        {
+          "order": 1,
+          "callstack": "#0  target (v=42) at toy.c:17\n#1  0x00005555555553c2 in main (argc=2, argv=0x7fffffffe0c8) at toy.c:31",
+          "inline_expr": [
+            {
+              "name": "v",
+              "value": "42"
+            },
+            {
+              "name": "nosuch",
+              "value": "<error: nosuch is not evaluable here (No symbol \"nosuch\" in current context.). How to fix: 1. check the variable is in scope at this line 2. set the breakpoint after the assignment>"
+            }
+          ]
+        }
+      ],
+      "number": 1
+    },
+    {
+      "location": "nosuch.c:10",
+      "function": null,
+      "resolved": false,
+      "hit_times": 0,
+      "hits": [],
+      "number": 2
+    }
+  ],
+  "signal": null,
+  "exit_code": 0,
+  "errors": [],
+  "info_breakpoints": "Num     Type           Disp Enb Address            What\n1       breakpoint     keep y   0x00005555555552ad in target at toy.c:17\n2       breakpoint     keep y   <PENDING>          nosuch.c:10\n"
+}

@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "engine-rpc.schema.json",
+  "title": "PbfuzzEngineRpc",
+  "description": "The TS plugin ↔ Python engine sidecar surface. Newline-delimited JSON-RPC 2.0 over the sidecar's stdin/stdout; stderr is log only. W1 writes the client, W2/W3 the server. The sidecar is a long-lived process started on demand and restarted when `execution.pythonPath` changes.",
+  "$defs": {
+    "Request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id", "method"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "type": ["string", "integer"] },
+        "method": {
+          "type": "string",
+          "enum": ["ping", "campaign.load", "fuzz.run", "fuzz.cancel", "trace.run", "deviation.run", "corpus.analyze", "params.extract", "generator.validate", "selfcheck.engine"]
+        },
+        "params": { "type": "object" }
+      }
+    },
+    "Response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "id"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "type": ["string", "integer"] },
+        "result": {},
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "integer" },
+            "message": { "type": "string" },
+            "data": {
+              "type": "object",
+              "description": "Failure recovery is first class: an error carries a diagnosis and concrete options rather than just a message.",
+              "properties": {
+                "diagnosis": { "type": "string" },
+                "remedies": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["id", "label"],
+                    "properties": {
+                      "id": { "type": "string" },
+                      "label": { "type": "string" },
+                      "detail": { "type": "string" },
+                      "effect": { "type": "string", "enum": ["retry", "edit_campaign", "disable_tool", "run_command", "manual"] }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Notification": {
+      "type": "object",
+      "description": "Server→client progress, so a long fuzz job streams into the DSH job output instead of going silent.",
+      "additionalProperties": false,
+      "required": ["jsonrpc", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "method": { "type": "string", "enum": ["progress", "iteration", "log"] },
+        "params": { "type": "object" }
+      }
+    },
+    "PingResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["engineVersion", "contractsVersion", "python"],
+      "properties": {
+        "engineVersion": { "type": "string" },
+        "contractsVersion": { "type": "string", "description": "Must match the plugin's; a mismatch fails the engine self-check rather than risking a silent schema skew." },
+        "python": { "type": "string" },
+        "capabilities": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "FuzzRunParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["campaignPath", "planPath", "generatorPath"],
+      "properties": {
+        "campaignPath": { "type": "string" },
+        "planPath": { "type": "string", "description": "The `fuzz_plan.json` produced in IMPLEMENT." },
+        "generatorPath": { "type": "string", "description": "Module exposing `generate(**params) -> bytes`. Run in a subprocess under rlimit — never imported into the engine process." },
+        "runtime": {
+          "type": "object",
+          "description": "Per-run overrides of the settings defaults.",
+          "properties": {
+            "maxIters": { "type": "integer" },
+            "execTimeoutSec": { "type": "number" },
+            "fuzzTimeoutSec": { "type": "number" },
+            "generatorTimeoutSec": { "type": "number" },
+            "enableDebuggerForAll": { "type": "boolean" }
+          }
+        },
+        "pierRound": { "type": "integer", "minimum": 0 },
+        "debuggerPaths": { "$ref": "#/$defs/DebuggerPaths", "description": "Used by stage-1 tracing inside the fuzz session." }
+      }
+    },
+    "FuzzRunResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "metricsPath"],
+      "description": "The engine writes metrics.json itself; the agent only reads it. Iteration detail stays on disk so a long run does not flood the context.",
+      "properties": {
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["totalIterations", "reachedCount", "triggeredCount"],
+          "properties": {
+            "totalIterations": { "type": "integer", "minimum": 0 },
+            "reachedCount": { "type": "integer", "minimum": 0 },
+            "triggeredCount": { "type": "integer", "minimum": 0 },
+            "timeoutCount": { "type": "integer", "minimum": 0 },
+            "errorCount": { "type": "integer", "minimum": 0 },
+            "elapsedSec": { "type": "number", "minimum": 0 },
+            "stoppedBy": { "type": "string", "enum": ["completed", "timeout", "trigger", "error", "cancelled"] },
+            "errorPhase": { "type": "string", "description": "Set alongside errorMessage/errorDiagnosis when stoppedBy is \"error\": which phase failed (e.g. `generator_<kind>`)." },
+            "errorMessage": { "type": "string", "description": "The mid-run error's short message, carried through from the internal iteration record so a caller inspecting only the RPC result still sees why the run stopped early." },
+            "errorDiagnosis": { "type": "string", "description": "The mid-run error's diagnosis, carried through from the internal iteration record so a caller inspecting only the RPC result still sees why the run stopped early." }
+          }
+        },
+        "metricsPath": { "type": "string" },
+        "iterationsPath": { "type": "string" },
+        "firstTriggeringInput": { "type": "string" },
+        "bestReachingInputs": { "type": "array", "items": { "type": "string" } },
+        "stage1": {
+          "type": "object",
+          "description": "Stage-1 concrete runs with their traced breakpoint observations — the evidence REFLECT reasons over.",
+          "properties": {
+            "entries": { "type": "integer" },
+            "tracedEntries": { "type": "integer" },
+            "observations": { "type": "array", "items": { "type": "object" } }
+          }
+        }
+      }
+    },
+    "TraceRunParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["campaignPath", "input", "breakpoints"],
+      "properties": {
+        "campaignPath": { "type": "string" },
+        "input": { "type": "string", "description": "Path to the input file to run." },
+        "breakpoints": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/Breakpoint" } },
+        "tracer": { "type": "string", "enum": ["auto", "gdb", "lldb", "pymon", "jdb"] },
+        "timeoutSec": { "type": "number" },
+        "debuggerPaths": { "$ref": "#/$defs/DebuggerPaths" }
+      }
+    },
+    "DebuggerPaths": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Interpreter/debugger locations forwarded from pbfuzz settings (`execution.gdbPath`, `execution.pythonPath`). Every field optional; the engine falls back to PATH lookup.",
+      "properties": {
+        "gdbPath": { "type": "string" },
+        "lldbPath": { "type": "string" },
+        "pythonPath": { "type": "string" },
+        "jdbPath": { "type": "string" }
+      }
+    },
+    "TraceRunResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["breakpoints"],
+      "properties": {
+        "breakpoints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["location", "hitTimes"],
+            "properties": {
+              "location": { "type": "string" },
+              "function": { "type": "string" },
+              "resolved": { "type": "boolean", "description": "False when the debugger could not bind the breakpoint — usually a missing -g build or an optimised-out line." },
+              "hitTimes": { "type": "integer", "minimum": 0 },
+              "hits": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "callstack": { "type": "string" },
+                    "inlineExpr": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "value": { "type": "string" } } } }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "signal": { "type": "string" },
+        "exitCode": { "type": "integer" },
+        "reached": { "type": "boolean" },
+        "triggered": { "type": "boolean" }
+      }
+    },
+    "DeviationRunParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["campaignPath", "input"],
+      "description": "The plugin fetches critical locations from the active analysis provider and passes them in; the engine never talks to a provider itself. Without `criticalLocations` the detector degrades to `target_only`.",
+      "properties": {
+        "campaignPath": { "type": "string" },
+        "input": { "type": "string", "description": "Path to the input file to run." },
+        "criticalLocations": {
+          "type": "array",
+          "description": "The provider's `ProviderLocation[]` (contracts/analysis-provider.ts).",
+          "items": {
+            "type": "object",
+            "required": ["location"],
+            "properties": {
+              "location": { "type": "string" },
+              "function": { "type": "string" },
+              "distance": { "type": "number" }
+            }
+          }
+        },
+        "extraBreakpoints": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/Breakpoint" } },
+        "tracer": { "type": "string", "enum": ["auto", "gdb", "lldb", "pymon", "jdb"] },
+        "timeoutSec": { "type": "number" },
+        "debuggerPaths": { "$ref": "#/$defs/DebuggerPaths" }
+      }
+    },
+    "DeviationRunResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Where an execution left the path toward the target. With a static provider this is the first critical branch taken the wrong way; without one it degrades to reporting how far the execution got.",
+      "properties": {
+        "mode": { "type": "string", "enum": ["critical_bb", "target_only"] },
+        "deviationPoint": { "type": "string" },
+        "function": { "type": "string" },
+        "lastReachedLocation": { "type": "string" },
+        "distanceRemaining": { "type": "number" },
+        "callstack": { "type": "string" },
+        "explanation": { "type": "string" }
+      }
+    },
+    "CorpusAnalyzeResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "seeds": { "type": "integer", "minimum": 0 },
+        "reachingSeeds": { "type": "integer", "minimum": 0 },
+        "routes": {
+          "type": "array",
+          "description": "Distinct call-stack routes by which seeds reach the target; the basis for base_seed parameters.",
+          "items": { "type": "object", "properties": { "callstack": { "type": "string" }, "count": { "type": "integer" }, "exemplar": { "type": "string" } } }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "_provenance": "CAPTURED from a real run: GNU gdb (Ubuntu 15.1-1ubuntu1~24.04.1) 15.1, Linux x86-64, cc -g -O0 on the test_tracers_integration toy (paths rewritten to toy.c); target() patched to call parse_header(0, 0) then NULL-deref, giving hit order line5, line17, line5 before SIGSEGV",
+  "breakpoints": [
+    {
+      "location": "toy.c:5",
+      "function": "parse_header",
+      "resolved": true,
+      "hit_times": 2,
+      "hits": [
+        {
+          "order": 1,
+          "callstack": "",
+          "inline_expr": []
+        },
+        {
+          "order": 3,
+          "callstack": "",
+          "inline_expr": []
+        }
+      ],
+      "number": 1
+    },
+    {
+      "location": "toy.c:17",
+      "function": "target",
+      "resolved": true,
+      "hit_times": 1,
+      "hits": [
+        {
+          "order": 2,
+          "callstack": "#0  target (v=42) at toy.c:17\n#1  0x00005555555553b8 in main (argc=2, argv=0x7fffffffe0a8) at toy.c:31",
+          "inline_expr": [
+            {
+              "name": "v",
+              "value": "42"
+            }
+          ]
+        }
+      ],
+      "number": 2
+    }
+  ],
+  "signal": "SIGSEGV",
+  "exit_code": null,
+  "errors": [],
+  "info_breakpoints": "Num     Type           Disp Enb Address            What\n1       breakpoint     keep y   0x000055555555521d in parse_header at toy.c:5\n2       breakpoint     keep y   0x00005555555552ad in target at toy.c:17\n"
+}

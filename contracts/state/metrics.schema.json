@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "state/metrics.schema.json",
+  "title": "PbfuzzMetrics",
+  "description": "`.pbfuzz/<id>/state/metrics.json` — written ONLY by the Python engine, never by the agent. The native guard (`core/guard-policy.ts::decide()`) denies any `write`/`edit` targeting this path, and the bash tamper ledger records shell attempts to touch it. That separation is what makes the metrics trustworthy evidence for REFLECT: the model cannot report progress it did not make.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["total_iterations", "total_reached_count", "triggered_count"],
+  "properties": {
+    "campaign_id": { "type": "string" },
+    "pier_round": { "type": "integer", "minimum": 0 },
+    "total_iterations": { "type": "integer", "minimum": 0 },
+    "total_reached_count": { "type": "integer", "minimum": 0, "description": "Cumulative reaching executions across every round." },
+    "last_reached_count": { "type": "integer", "minimum": 0, "description": "Reaching executions in the most recent fuzz session — the signal REFLECT compares round over round." },
+    "triggered_count": { "type": "integer", "minimum": 0 },
+    "timeout_count": { "type": "integer", "minimum": 0 },
+    "error_count": { "type": "integer", "minimum": 0 },
+    "last_session": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Summary of the most recent `pbfuzz_fuzz` job.",
+      "properties": {
+        "iterations": { "type": "integer", "minimum": 0 },
+        "reached": { "type": "integer", "minimum": 0 },
+        "triggered": { "type": "integer", "minimum": 0 },
+        "timeouts": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "integer", "minimum": 0 },
+        "elapsed_sec": { "type": "number", "minimum": 0 },
+        "stopped_by": { "type": "string", "enum": ["completed", "timeout", "trigger", "error", "cancelled"] },
+        "first_triggering_input": { "type": "string" },
+        "best_reaching_input": { "type": "string" },
+        "reproduced_times": { "type": "integer", "minimum": 0, "description": "How many times the engine re-ran `first_triggering_input` after the session stopped." },
+        "reproduced_ok": { "type": "integer", "minimum": 0, "description": "How many of those re-runs triggered again. This is the PoV's reproduction count; nobody else is in a position to measure it." }
+      }
+    },
+    "last_updated": { "type": "string", "format": "date-time" }
+  }
+}

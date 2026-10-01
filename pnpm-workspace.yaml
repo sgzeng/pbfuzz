@@ -1,0 +1,19 @@
+packages:
+  - 'packages/*'
+# Transitive DSH packages whose npm `latest` tag lags (0.0.1-rc.1) resolve to stale
+# versions; pin them to DSH_VERSION (HARNESS_COMMIT) so every DSH peer is satisfied.
+overrides:
+  '@deepseek-ai/dsh-attachment': 0.1.5-rc.1
+  '@deepseek-ai/dsh-code-runtime': 0.1.5-rc.1
+  '@deepseek-ai/dsh-hook-protocol': 0.1.5-rc.1
+  '@deepseek-ai/dsh-http-proxy': 0.1.5-rc.1
+  '@deepseek-ai/dsh-invariants': 0.1.5-rc.1
+  '@deepseek-ai/dsh-sandbox': 0.1.5-rc.1
+  '@deepseek-ai/dsh-scope': 0.1.5-rc.1
+  '@deepseek-ai/dsh-shell': 0.1.5-rc.1
+  '@deepseek-ai/dsh-subagent': 0.1.5-rc.1
+  '@deepseek-ai/dsh-subprocess': 0.1.5-rc.1
+  '@deepseek-ai/dsh-system-prompt': 0.1.5-rc.1
+  '@deepseek-ai/dsh-user-approval': 0.1.5-rc.1
+  '@deepseek-ai/dsh-util-time': 0.1.5-rc.1
+  '@deepseek-ai/dsh-util-values': 0.1.5-rc.1

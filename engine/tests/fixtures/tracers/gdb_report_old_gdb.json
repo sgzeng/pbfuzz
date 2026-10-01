@@ -1,0 +1,12 @@
+{
+  "_provenance": "SYNTHESIZED: an older gdb whose Python Breakpoint exposes neither `locations` nor `pending`, so the script leaves `resolved` null and the host must fall back to parsing `info breakpoints`. Includes a <MULTIPLE> row with sub-locations.",
+  "breakpoints": [
+    {"location": "toy.c:7", "function": null, "resolved": null, "hit_times": 0, "number": 1, "hits": []},
+    {"location": "gone.c:3", "function": null, "resolved": null, "hit_times": 0, "number": 2, "hits": []},
+    {"location": "inl.h:5", "function": null, "resolved": null, "hit_times": 0, "number": 3, "hits": []}
+  ],
+  "signal": null,
+  "exit_code": 2,
+  "errors": [],
+  "info_breakpoints": "Num     Type           Disp Enb Address            What\n1       breakpoint     keep y   0x0000000000401156 in parse_header at toy.c:7\n2       breakpoint     keep y   <PENDING>          gone.c:3\n3       breakpoint     keep y   <MULTIPLE>\n3.1                         y   0x0000000000401200 in f at inl.h:5\n3.2                         y   0x0000000000401300 in g at inl.h:5\n"
+}

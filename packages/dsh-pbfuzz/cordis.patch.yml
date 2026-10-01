@@ -1,0 +1,13 @@
+# pbfuzz profile layer.
+#
+# `dsh plugin --profile <p> add @pbfuzz/dsh-pbfuzz` appends this bundle to the
+# profile, which inserts the host half. The plugin registers its own settings
+# section (`pbfuzz`) at host level, because a preset-mounted plugin cannot own
+# settings. Phase gating, state-directory/metrics.json invariants and bash
+# tamper detection are enforced natively (a single `ctx.tools.guard()`
+# registration in `guards.ts`) — the plugin mounts no hooks bridge, so there is
+# no fallback row to enable here.
+
+- insert:
+    - id: pbfuzz
+      name: '@pbfuzz/dsh-pbfuzz'

@@ -1,0 +1,33 @@
+version: 1
+id: toy-python-atheris
+confirmed: true
+target:
+  repo: /mnt/work/pbfuzz/pbfuzz-dsh/examples/toy-python-atheris
+  language: python
+bug:
+  targets:
+  - location: toy.py:24
+    condition: len(data) >= 5 and data[4] == 0x42, inside the already-taken branch where len(data) >= 4 and data[0:4] == b"FUZZ"
+build:
+  cmd: ./build.sh
+  dir: /mnt/work/pbfuzz/pbfuzz-dsh/examples/toy-python-atheris/.pbfuzz/toy-python-atheris
+entry:
+  kind: api
+  run_cmd: /mnt/work/pbfuzz/pbfuzz-dsh/engine/.venv/bin/python harness.py @@
+  input_channel: file
+  harness: harness.py
+  harness_function: TestOneInput
+  cwd: /mnt/work/pbfuzz/pbfuzz-dsh/examples/toy-python-atheris
+oracle:
+  mode: preexisting
+  reached_pattern: 'toy: magic FUZZ prefix seen'
+  triggered_pattern: 'toy: crash byte 0x42 seen'
+analysis:
+  corpus:
+    enabled: true
+    seeds_dir: /mnt/work/pbfuzz/pbfuzz-dsh/examples/toy-python-atheris/seeds
+  deviation:
+    enabled: true
+    mode: target_only
+output:
+  dir: /mnt/work/pbfuzz/pbfuzz-dsh/examples/toy-python-atheris/.pbfuzz/toy-python-atheris

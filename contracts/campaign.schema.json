@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "campaign.schema.json",
+  "title": "PbfuzzCampaign",
+  "description": "`pbfuzz.campaign.yaml` — the TARGET-PROJECT facts one pbfuzz run needs, and nothing else. pbfuzz's own behaviour lives in pbfuzz-settings.schema.json, and how a fact was decided is shown once in the confirmation panel rather than stored here: an earlier version carried a `provenance` map plus the same evidence again as inline comments, which made a single-file target's campaign 12.8 KB of which ~80% was the same 22 sentences twice. Every field below is read by the engine, the analysis provider or the guards; a field that only described the campaign to a human reader is gone.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "id", "target", "bug", "entry", "oracle"],
+  "properties": {
+    "version": {
+      "const": 1,
+      "description": "Campaign schema version. Bumped only on a breaking change."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+      "description": "Campaign identifier; names the state directory `<output.dir>` default and the kanalyzer cache namespace."
+    },
+    "confirmed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Set by `pbfuzz_campaign confirm` when the user approves the plan-review panel, which also opens PLAN. A hand-written headless campaign must set it explicitly."
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo"],
+      "properties": {
+        "repo": { "type": "string", "description": "Absolute path to the target project checkout." },
+        "language": {
+          "type": "string",
+          "enum": ["c", "cpp", "python", "java", "other"],
+          "description": "Drives tracer selection and which analysis providers can apply. `other` is supported: the engine only needs `entry.run_cmd` plus the oracle."
+        }
+      }
+    },
+    "bug": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targets"],
+      "description": "What we are trying to trigger, and where.",
+      "properties": {
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Target locations. Each must resolve to a line carrying an instruction — KAMain silently finds nothing otherwise.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["location"],
+            "properties": {
+              "location": { "$ref": "common.schema.json#/$defs/Location" },
+              "condition": {
+                "type": "string",
+                "description": "The predicate that must hold at this location for the bug to trigger, in source syntax where possible. Carried into PLAN's bug predicates."
+              }
+            }
+          }
+        }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How to build the target: the user's build command, or a script the agent wrote. `pbfuzz_campaign draft` runs it (making a script executable first) and reports what happened; static analysis reuses it for its own bitcode build.",
+      "properties": {
+        "cmd": { "type": "string", "description": "Build command, or the path of a build script." },
+        "dir": { "type": "string", "description": "Where to run it. Defaults to `target.repo`." }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "run_cmd", "input_channel"],
+      "description": "How one input is fed to the program under test. This is the whole of what the engine needs to execute, and the reason the framework is language-agnostic: libFuzzer, Atheris and Jazzer harnesses all run one input from one file, so `run_cmd` with `@@` covers all of them.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["api", "executable"],
+          "description": "`api` = the project's existing fuzz harness is used; `executable` = a binary is run end to end."
+        },
+        "harness": { "type": "string", "description": "Harness source file, for `kind: api`." },
+        "harness_function": { "type": "string", "description": "e.g. LLVMFuzzerTestOneInput / TestOneInput / fuzzerTestOneInput." },
+        "run_cmd": {
+          "type": "string",
+          "description": "Full command template. `@@` is replaced by the input file path when `input_channel` is `file`; with `stdin` the input is piped and `@@` must not appear."
+        },
+        "input_channel": { "type": "string", "enum": ["file", "stdin"] },
+        "cwd": { "type": "string" },
+        "env": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Extra environment for the target process, merged over the engine's own." }
+      }
+    },
+    "oracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "reached_pattern", "triggered_pattern"],
+      "description": "How a run is judged. Both signals are stderr regexes, which keeps the oracle independent of language and harness.",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["canary", "preexisting"],
+          "description": "`canary` = pbfuzz inserted its own reach/trigger canaries; `preexisting` = the project already emits usable markers (e.g. Magma's MAGMA_LOG)."
+        },
+        "reached_pattern": { "type": "string", "description": "Regex matched against stderr to detect that the target location was reached." },
+        "triggered_pattern": { "type": "string", "description": "Regex matched against stderr to detect that the bug predicate held." },
+        "canary_on_trigger": {
+          "type": "string",
+          "enum": ["abort", "log"],
+          "default": "log",
+          "description": "What an inserted trigger canary does. `log` keeps the run alive so one execution can report several signals. Only meaningful with `mode: canary`; omitted when it is the default."
+        },
+        "canary_patch": {
+          "type": "string",
+          "description": "Path to the reversible patch holding the inserted canaries, so the target can be restored exactly."
+        }
+      }
+    },
+    "tracer": {
+      "type": "string",
+      "enum": ["auto", "gdb", "lldb", "pymon", "jdb", "off"],
+      "description": "Breakpoint tracer for stage-1 concrete runs. Absent means `tools.tracer` from settings; `auto` picks by `target.language`. Written only when this campaign overrides the setting."
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per-campaign configuration for each auxiliary analysis tool enabled in settings. A tool that could not be made to work is recorded here as disabled with a reason, which is what lets the run continue instead of degrading silently.",
+      "properties": {
+        "static": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Static analysis inputs, all optional: the analyzer builds its own bitcode the first time it is queried. Whether it runs at all is a setting; `enabled: false` with a `disabled_reason` turns it off for this campaign.",
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "disabled_reason": { "type": "string" },
+            "mode": { "type": "string", "enum": ["lto", "wllvm", "prebuilt"], "default": "wllvm" },
+            "program": { "type": "string", "description": "The link output being analysed (basename of the binary)." },
+            "bitcode": { "type": "string", "description": "An existing `*.0.0.preopt.bc` to reuse instead of building one." },
+            "entries": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "KAMain `-entry-list`. Inferred with llvm-nm: `LLVMFuzzerTestOneInput` when present, else `main`."
+            },
+            "lto_libs": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Static dependency libraries that must also be LTO-built, or KAMain sees an incomplete call graph."
+            },
+            "prebuilt_dir": { "type": "string", "description": "Existing KAMain text outputs to import instead of running the analysis (the Magma SKIP_STATIC_ANALYSIS path)." }
+          }
+        },
+        "corpus": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "disabled_reason": { "type": "string", "description": "e.g. `no seeds supplied` — corpus analysis turns itself off rather than failing the run." },
+            "seeds_dir": { "type": "string" }
+          }
+        },
+        "deviation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "disabled_reason": { "type": "string" },
+            "mode": {
+              "type": "string",
+              "enum": ["critical_bb", "target_only"],
+              "default": "critical_bb",
+              "description": "`critical_bb` needs static analysis; without it the detector degrades to `target_only`."
+            }
+          }
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dir": { "type": "string", "description": "Where state, testcases, logs and the PoC are written. Defaults to the directory containing this campaign file." }
+      }
+    }
+  }
+}

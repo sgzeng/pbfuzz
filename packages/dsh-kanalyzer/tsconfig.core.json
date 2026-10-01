@@ -1,0 +1,21 @@
+{
+  "// why": [
+    "The host layer (src/index.ts, src/host/**) imports @deepseek-ai/* peers, which resolve only",
+    "on a machine with the pinned deepseek-harness workspace linked in. Everything under src/core",
+    "is deliberately free of those imports — that is where the KAMain output parsing, the status",
+    "derivation, the path remapping and the cache key live — so it typechecks and unit-tests",
+    "anywhere, including a developer machine with no harness and no LLVM.",
+    "tests/host/** is the one exception to the blanket \"tests\" include below: those specs mock",
+    "the subprocess boundary in src/host/exec.ts to test src/host/{commands,runtime,settings}.ts,",
+    "which necessarily means importing @deepseek-ai/* (cordis, dsh-commands, schemastery) — the",
+    "same harness-only imports this config exists to keep out of core. Every other tests/*.spec.ts",
+    "stays included and harness-free."
+  ],
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": []
+  },
+  "include": ["src/core", "src/api.ts", "tests"],
+  "exclude": ["tests/host"]
+}

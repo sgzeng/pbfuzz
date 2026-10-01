@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "state/blocks.schema.json",
+  "title": "PbfuzzStateBlocks",
+  "description": "The analysis blocks `pbfuzz_plan` writes during PIER, one JSON file per block under `.pbfuzz/<id>/state/`. The tool validates its input against the matching $def before writing, and `PbfuzzHost.advancePhase()` refuses a phase transition whose required blocks are missing or incomplete; a direct agent `write`/`edit` of these files is denied. Ported from the CCS'26 pydantic schemas, with the vulnerability category opened up so the framework is not C/C++-specific.",
+  "$defs": {
+    "BugPredicate": {
+      "type": "object",
+      "description": "One disjunctive branch of the triggering condition — satisfying ANY BugPredicate triggers the bug. `bug_predicates.json` holds an array of these.",
+      "additionalProperties": false,
+      "required": ["id", "location", "bug_condition"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^BP[0-9]+$" },
+        "location": { "$ref": "../common.schema.json#/$defs/Location" },
+        "bug_condition": { "type": "string", "description": "The condition extracted from the target source line." }
+      }
+    },
+    "Precondition": {
+      "type": "object",
+      "description": "A condition that must hold to REACH the target. `preconditions.json` holds an array.",
+      "additionalProperties": false,
+      "required": ["id", "statement", "status", "evidence"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^R[0-9]+$" },
+        "statement": { "type": "string" },
+        "status": { "type": "string", "enum": ["verified", "violated", "unknown", "impossible"] },
+        "evidence": { "type": "array", "items": { "type": "string" } },
+        "input_constraints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Non-semantic constraints as math expressions (`width < 100`); semantic ones in natural language."
+        }
+      }
+    },
+    "RootCause": {
+      "type": "object",
+      "description": "Why the bug triggers once reached. `root_causes.json` holds an array.",
+      "additionalProperties": false,
+      "required": ["id", "description", "category", "evidence"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^RC[0-9]+$" },
+        "description": { "type": "string" },
+        "category": {
+          "type": "string",
+          "description": "Vulnerability category. The listed values are suggestions spanning memory-unsafe and memory-safe languages; any other string is accepted so the framework stays language-agnostic.",
+          "examples": [
+            "buffer_overflow", "heap_overflow", "out_of_bounds_read", "out_of_bounds_write",
+            "integer_overflow", "type_confusion", "race_condition", "command_injection",
+            "use_after_free", "double_free", "null_pointer_dereference", "uninitialized_memory",
+            "format_string", "logic_error", "uncaught_exception", "assertion_failure",
+            "resource_exhaustion", "deserialization", "path_traversal", "injection"
+          ]
+        },
+        "evidence": { "type": "array", "items": { "type": "string" } },
+        "input_constraints": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "related_precondition_ids": { "type": "array", "items": { "type": "string" }, "default": [] }
+      }
+    },
+    "TriggerPlan": {
+      "type": "object",
+      "description": "A high-level route to the bug, with a self-assessed implementation cost. The agent works the lowest-complexity pending plan first. `trigger_plans.json` holds an array.",
+      "additionalProperties": false,
+      "required": ["id", "description", "route_description", "complexity", "status"],
+      "properties": {
+        "id": { "type": "string" },
+        "description": { "type": "string" },
+        "route_description": { "type": "string" },
+        "complexity": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "status": { "type": "string", "enum": ["pending", "in_progress", "completed", "failed"] },
+        "evidence": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "precondition_ids": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "strategy": { "type": "string", "default": "" }
+      }
+    },
+    "BatchPlanEntry": {
+      "type": "object",
+      "description": "One concrete parameter assignment to try in stage 1, before the sampler takes over. `plan_description` is reserved; every other key is a generator parameter and must exist in the parameter space with a value inside its domain.",
+      "required": ["plan_description"],
+      "properties": { "plan_description": { "type": "string" } }
+    },
+    "FuzzPlan": {
+      "type": "object",
+      "description": "`fuzz_plan.json` — what EXECUTE runs. The parameter space defines the generator's keyword arguments; the batch plan pins the first concrete cases; breakpoints are traced during stage 1.",
+      "additionalProperties": false,
+      "required": ["parameter_space"],
+      "properties": {
+        "trigger_plan_id": { "type": "string" },
+        "parameter_space": { "$ref": "../common.schema.json#/$defs/ParameterSpace" },
+        "next_batch_plan": { "type": "array", "items": { "$ref": "#/$defs/BatchPlanEntry" }, "default": [] },
+        "breakpoints": { "type": "array", "items": { "$ref": "../common.schema.json#/$defs/Breakpoint" }, "default": [] },
+        "generator_path": { "type": "string", "description": "The generator module written in IMPLEMENT, exposing `generate(**params) -> bytes`." }
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+8017518024338118836,LLVMFuzzerTestOneInput,/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/fuzz.c,4,4
+15822663052811949562,main,/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/fuzz.c,7,7
+1218574720741507226,helper_add,/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/helper.c,2,2
+2195283515793704193,helper_other,/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/helper.c,6,6
+9337407029252913682,other_entry,/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/helper.c,10,10
+7632122815048565931,helper_danger,/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/helper.c,13,18

@@ -1,0 +1,26 @@
+Initializing jdb ...
+> Deferring breakpoint Toy:12.
+It will be set after the class is loaded.
+> Deferring breakpoint Toy:99.
+It will be set after the class is loaded.
+> run
+run Toy /tmp/in.bin
+Set uncaught java.lang.Throwable
+Set deferred uncaught java.lang.Throwable
+>
+VM Started: Set deferred breakpoint Toy:12
+Unable to set deferred breakpoint Toy:99 : No code at line 99 in Toy
+
+Breakpoint hit: "thread=main", Toy.parse(), line=12 bci=0
+12            if (n < 4) {
+
+main[1]   [1] Toy.parse (Toy.java:12)
+  [2] Toy.main (Toy.java:30)
+main[1] >
+Breakpoint hit: "thread=main", Toy.parse(), line=12 bci=0
+12            if (n < 4) {
+
+main[1]   [1] Toy.parse (Toy.java:12)
+  [2] Toy.main (Toy.java:31)
+main[1] >
+Exception occurred: java.lang.ArrayIndexOutOfBoundsException (uncaught)"thread=main", Toy.main(), line=33 bci=20

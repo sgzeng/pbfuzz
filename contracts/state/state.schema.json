@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "state/state.schema.json",
+  "title": "PbfuzzState",
+  "description": "`.pbfuzz/<id>/state/state.json` — the PIER cursor. Written ONLY by pbfuzz's own tools (`pbfuzz_campaign selfcheck`, `pbfuzz_plan`, `pbfuzz_fuzz`, `pbfuzz_reflect`) through `PbfuzzHost.advancePhase()`, which enforces the FSM, the INIT gate and the loop budget before the write lands. A direct agent `write`/`edit` under the campaign's state directory is denied by the host's `ctx.tools.guard()` and pointed at the tool that owns this file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["campaign_id", "phase", "status", "current_task", "next_action", "pier_round"],
+  "properties": {
+    "campaign_id": { "type": "string" },
+    "phase": {
+      "type": "string",
+      "enum": ["INIT", "PLAN", "IMPLEMENT", "EXECUTE", "REFLECT", "SUCCESS", "STOPPED"],
+      "description": "INIT covers the questionnaire, canary insertion and the self-check. SUCCESS means a PoV was produced; STOPPED means the budget or wall clock ran out. Legal transitions: INIT→PLAN (gated), PLAN→IMPLEMENT→EXECUTE→REFLECT, REFLECT→PLAN (budget-gated), REFLECT→SUCCESS, any→STOPPED."
+    },
+    "status": { "type": "string", "description": "One line on where the run stands." },
+    "current_task": { "type": "string" },
+    "next_action": { "type": "string" },
+    "pier_round": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Completed PLAN→REFLECT cycles. `state-writer.ts`'s `advancePhase()` redirects a REFLECT→PLAN request to STOPPED once this reaches `maxPierRounds`, instead of the caller-requested PLAN."
+    },
+    "started_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "poc": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Present only in SUCCESS.",
+      "properties": {
+        "input_path": { "type": "string" },
+        "parameters": { "type": "object" },
+        "reproduced_times": { "type": "integer", "minimum": 1 },
+        "run_cmd": { "type": "string" }
+      }
+    },
+    "stop_reason": { "type": "string", "description": "Required when phase is STOPPED." }
+  }
+}

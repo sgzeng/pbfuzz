@@ -1,0 +1,6 @@
+Total 1 file(s)
+Input Filename : /mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/toyfuzz.0.0.preopt.bc
+
+[WARN] Reachable Analysis: No caller for main
+
+[WARN] No caller for main

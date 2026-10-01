@@ -1,0 +1,94 @@
+/**
+ * pbfuzz's internal auxiliary-analysis provider interface.
+ *
+ * pbfuzz ships NO static analyzer of its own. It defines this interface, and an adapter
+ * registers a provider when a backing plugin is present — today only the kanalyzer adapter,
+ * registered from inside `ctx.inject(['kanalyzer'], …)` so it disappears with the plugin.
+ * Adding CodeQL or Joern later for Python/Java means writing another adapter and nothing else:
+ * this indirection is what decouples pbfuzz from C/C++.
+ *
+ * @module contracts/analysis-provider
+ */
+
+import type { PbfuzzCampaign } from './generated/types.ts'
+
+/** What a provider can do, so pbfuzz can decide which tools to expose and how to degrade. */
+export interface ProviderCapabilities {
+  /** Stable provider id, e.g. `kanalyzer`. Recorded in `campaign.analysis.static.provider`. */
+  id: string
+  displayName: string
+  /** Source languages this provider can analyse. */
+  languages: ('c' | 'cpp' | 'python' | 'java' | 'other')[]
+  /** Whether `criticalLocations` is meaningful; deviation detection degrades to target-only without it. */
+  criticalLocations: boolean
+  callGraph: boolean
+  /** Whether the provider needs a `prepare` step before queries work. */
+  requiresPrepare: boolean
+}
+
+/** A source location this provider reports, normalised to the target repo's paths. */
+export interface ProviderLocation {
+  /** `file:line`, resolved against `campaign.target.repo`. */
+  location: string
+  function?: string
+  /** Call-graph distance to the nearest target, when the provider computes one. */
+  distance?: number
+}
+
+export interface PrepareOutcome {
+  ok: boolean
+  /** Provider-specific handle passed back to later queries (for kanalyzer, the bitcode path). */
+  handle?: string
+  /**
+   * Campaign fields the prepare step discovered, to be merged back with provenance
+   * (e.g. `analysis.static.bitcode`, `analysis.static.entries`).
+   */
+  discovered?: Record<string, unknown>
+  evidence: string[]
+  reason?: string
+}
+
+/** Result of the provider's REAL self-test against this campaign's target. */
+export interface ProviderSelftest {
+  ok: boolean
+  /**
+   * Every assertion that was checked, with what it returned. The self-check requires all of:
+   * the provider answers, the target resolves, an entry reaches it, critical locations are
+   * non-empty, and a callers/callees query on the target function returns something.
+   */
+  evidence: string[]
+  reason?: string
+  /** Concrete options to offer the user when `ok` is false. */
+  remedies?: { id: string; label: string; detail?: string; effect: 'retry' | 'edit_campaign' | 'disable_tool' | 'run_command' | 'manual' }[]
+}
+
+/**
+ * One auxiliary analysis backend. Every method must be safe to call concurrently and must
+ * never throw for "found nothing" — that is a normal, reportable outcome.
+ */
+export interface AnalysisProvider {
+  describe(): ProviderCapabilities
+  /** Bring the target into an analysable state (for kanalyzer: LTO rebuild + bitcode discovery). */
+  prepare(campaign: PbfuzzCampaign): Promise<PrepareOutcome>
+  callers(fn: string, handle?: string): Promise<string[]>
+  callees(fn: string, handle?: string): Promise<string[]>
+  functionAt(location: string, handle?: string): Promise<string | undefined>
+  /**
+   * Branch points whose outcome decides whether a target stays reachable. The deviation
+   * detector compares an execution's taken branches against these.
+   */
+  criticalLocations(handle?: string): Promise<ProviderLocation[]>
+  /** Exercise the provider for real against this campaign; see PLAN §2.7. */
+  selftest(campaign: PbfuzzCampaign): Promise<ProviderSelftest>
+}
+
+/**
+ * The registry pbfuzz keeps. Registration is an effect on the registering fiber, so a provider
+ * unregisters itself when its backing plugin unloads.
+ */
+export interface AnalysisProviderRegistry {
+  register(provider: AnalysisProvider): { dispose(): void }
+  /** The active provider, or undefined when no backend is installed or static analysis is off. */
+  active(): AnalysisProvider | undefined
+  list(): ProviderCapabilities[]
+}

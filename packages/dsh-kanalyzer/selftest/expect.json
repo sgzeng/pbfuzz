@@ -1,0 +1,10 @@
+{
+  "source": "sample.c",
+  "program": "sample",
+  "target": "sample.c:7",
+  "targetFunction": "target",
+  "commentLine": "sample.c:1",
+  "entry": "main",
+  "edge": { "caller": "main", "callee": "foo" },
+  "criticalFunction": "foo"
+}

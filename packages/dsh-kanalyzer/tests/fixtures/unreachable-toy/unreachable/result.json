@@ -1,0 +1,20 @@
+{
+  "status": "ok",
+  "targets": [
+    {
+      "requested": "helper.c:6",
+      "function": "helper_other",
+      "location": "helper.c:6",
+      "distance": 0
+    }
+  ],
+  "criticalBranches": [],
+  "reachableFunctions": 3,
+  "totalFunctions": 6,
+  "entriesUsed": [
+    "LLVMFuzzerTestOneInput"
+  ],
+  "outputDir": "/home/haochen/.dsh/kanalyzer/cache/c116398e73956c919e79c2edc37c7653f6a726e65b54d6ebaa7a318da50b9ff5",
+  "elapsedMs": 15,
+  "cached": false
+}

@@ -1,0 +1,3 @@
+# Build artifacts (regenerate with ./build.sh); seeds/*.bin are checked in on purpose.
+/*.class
+/Crash_*.java

@@ -1,0 +1,18 @@
+{
+  "binary": "/home/haochen/.dsh/kanalyzer/kernel-analyzer/build/lib/KAMain",
+  "args": [
+    "-verbose=1",
+    "-call-stack-len=20",
+    "-type-based-callgraph=1",
+    "-target-list=/home/haochen/.dsh/kanalyzer/cache/515213ca73af1ff7f663af0a6ea084c096de3848d7f12fba94eb9ae623487c90/targets.txt",
+    "-entry-list=/home/haochen/.dsh/kanalyzer/cache/515213ca73af1ff7f663af0a6ea084c096de3848d7f12fba94eb9ae623487c90/entries.txt",
+    "-dump-policy=/home/haochen/.dsh/kanalyzer/cache/515213ca73af1ff7f663af0a6ea084c096de3848d7f12fba94eb9ae623487c90/policy.txt",
+    "-dump-distance=/home/haochen/.dsh/kanalyzer/cache/515213ca73af1ff7f663af0a6ea084c096de3848d7f12fba94eb9ae623487c90/distance.cfg.txt",
+    "-dump-critical-branch=/home/haochen/.dsh/kanalyzer/cache/515213ca73af1ff7f663af0a6ea084c096de3848d7f12fba94eb9ae623487c90/critical_BBs.txt",
+    "-dump-bid-mapping=/home/haochen/.dsh/kanalyzer/cache/515213ca73af1ff7f663af0a6ea084c096de3848d7f12fba94eb9ae623487c90/bid_loc_mapping.txt",
+    "-dump-func-info=/home/haochen/.dsh/kanalyzer/cache/515213ca73af1ff7f663af0a6ea084c096de3848d7f12fba94eb9ae623487c90/function_info.txt",
+    "-dump-caller-callee=/home/haochen/.dsh/kanalyzer/cache/515213ca73af1ff7f663af0a6ea084c096de3848d7f12fba94eb9ae623487c90/caller-callee.txt",
+    "-dump-callee-caller=/home/haochen/.dsh/kanalyzer/cache/515213ca73af1ff7f663af0a6ea084c096de3848d7f12fba94eb9ae623487c90/callee-caller.txt",
+    "/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/toyfuzz.0.0.preopt.bc"
+  ]
+}

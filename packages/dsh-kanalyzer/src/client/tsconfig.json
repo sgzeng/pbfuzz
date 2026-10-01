@@ -1,0 +1,14 @@
+{
+  // Client half: JSX + DOM, type-checked only (esbuild emits lib/client.js).
+  // Needs the devDependencies listed in INTEGRATION.md to resolve DSH client types.
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "noEmit": true,
+    "declaration": false,
+    "types": []
+  },
+  "include": ["./**/*.ts", "./**/*.tsx", "../generated/contracts.ts"],
+  "exclude": ["./**/*.test.ts"]
+}

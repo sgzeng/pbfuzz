@@ -1,0 +1,8 @@
+# Profile Bundle layer for the standalone kanalyzer plugin.
+#
+# One Host row. The plugin publishes `ctx.kanalyzer`, its `kanalyzer_*` tools and the
+# `/kanalyzer` command; a consumer (pbfuzz, or anything else) picks the service up through
+# `ctx.inject(['kanalyzer'], …)` so everything it registers on top disappears with this row.
+- insert:
+    - id: dsh-kanalyzer
+      name: '@pbfuzz/dsh-kanalyzer'

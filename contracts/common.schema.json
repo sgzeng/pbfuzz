@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "common.schema.json",
+  "title": "PbfuzzCommon",
+  "description": "Definitions shared by every other pbfuzz contract.",
+  "$defs": {
+    "Location": {
+      "type": "string",
+      "description": "Source location as `file:line`. The file part may be repo-relative or absolute; consumers resolve it against `target.repo`.",
+      "pattern": "^.+:[0-9]+$"
+    },
+    "ValueSource": {
+      "type": "string",
+      "description": "Where a campaign value came from. `user` was answered in the questionnaire, `inferred` was derived by the agent, `default` came from settings, `agent_built` was constructed by the agent and verified.",
+      "enum": ["user", "inferred", "default", "agent_built"]
+    },
+    "Provenance": {
+      "type": "object",
+      "description": "Per-field record of how a campaign value was decided, keyed by dotted field path (e.g. `entry.binary`). Rendered in the confirmation panel so the user sees what pbfuzz decided on its own.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source"],
+        "properties": {
+          "source": { "$ref": "#/$defs/ValueSource" },
+          "evidence": {
+            "type": "string",
+            "description": "Why the agent chose this value — the concrete observation, not a restatement (e.g. `llvm-nm found LLVMFuzzerTestOneInput in fuzz_elf.0.0.preopt.bc`)."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "True once the user explicitly approved this inferred value.",
+            "default": false
+          }
+        }
+      }
+    },
+    "IntRangeParam": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "min", "max"],
+      "properties": {
+        "type": { "const": "int_range" },
+        "min": { "type": "integer" },
+        "max": { "type": "integer" }
+      }
+    },
+    "FloatRangeParam": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "min", "max"],
+      "properties": {
+        "type": { "const": "float_range" },
+        "min": { "type": "number" },
+        "max": { "type": "number" }
+      }
+    },
+    "CategoricalParam": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "values"],
+      "properties": {
+        "type": { "const": "categorical" },
+        "values": { "type": "array", "minItems": 1 }
+      }
+    },
+    "BoolParam": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": { "type": { "const": "bool" } }
+    },
+    "BaseSeedParam": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "seed_file_path"],
+      "properties": {
+        "type": { "const": "base_seed" },
+        "seed_file_path": {
+          "type": "string",
+          "description": "Absolute path to a reaching seed used as the mutation template."
+        }
+      }
+    },
+    "SegmentsParam": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "count_range", "segment_params"],
+      "properties": {
+        "type": { "const": "segments" },
+        "count_range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["min", "max"],
+          "properties": {
+            "min": { "type": "integer", "minimum": 0 },
+            "max": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "segment_params": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/ParameterSpec" }
+        }
+      }
+    },
+    "ParameterSpec": {
+      "description": "One dimension of the generator's parameter space.",
+      "oneOf": [
+        { "$ref": "#/$defs/IntRangeParam" },
+        { "$ref": "#/$defs/FloatRangeParam" },
+        { "$ref": "#/$defs/CategoricalParam" },
+        { "$ref": "#/$defs/BoolParam" },
+        { "$ref": "#/$defs/SegmentsParam" },
+        { "$ref": "#/$defs/BaseSeedParam" }
+      ]
+    },
+    "ParameterSpace": {
+      "type": "object",
+      "description": "Named parameter dimensions. Keys are the keyword arguments the generator's `generate(**params) -> bytes` accepts.",
+      "additionalProperties": { "$ref": "#/$defs/ParameterSpec" }
+    },
+    "Breakpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["location"],
+      "properties": {
+        "location": { "$ref": "#/$defs/Location" },
+        "hit_limit": { "type": "integer", "minimum": 1, "default": 10 },
+        "inline_expr": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Expressions evaluated in the tracer's language at each hit."
+        },
+        "print_call_stack": { "type": "boolean", "default": false }
+      }
+    }
+  }
+}

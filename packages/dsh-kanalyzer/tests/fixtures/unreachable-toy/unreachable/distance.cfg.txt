@@ -1,0 +1,7 @@
+1001,3254384085,fuzz.c:7,0.000000
+1004,2839764142,helper.c:10,0.000000
+1003,3990759492,helper.c:6,0.000000
+##########
+fun:helper_other
+fun:other_entry
+fun:main

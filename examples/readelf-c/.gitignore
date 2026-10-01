@@ -1,0 +1,6 @@
+# Build artifacts (regenerate with ./build.sh); seeds/*.bin are checked in on purpose.
+/readelf
+/readelf.lto*
+/*.bc
+/*.o
+/*.resolution.txt

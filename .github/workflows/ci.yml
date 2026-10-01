@@ -1,0 +1,48 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    # ubuntu-latest is x86-64 — the only supported platform.
+    runs-on: ubuntu-latest
+    env:
+      # The engine smoke test (packages/dsh-pbfuzz/tests/engine-smoke.spec.ts) uses this
+      # interpreter; the engine is pip-installed into it below.
+      PBFUZZ_PYTHON: python
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4   # version from package.json#packageManager
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the engine
+        run: cd engine && python -m pip install -e '.[dev]'
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Contracts codegen is up to date
+        run: pnpm codegen:check
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Unit tests (vitest; includes the real-engine smoke test)
+        run: pnpm -r test
+
+      - name: Client bundle self-checks
+        run: pnpm check:clients
+
+      - name: Engine tests
+        run: cd engine && python -m pytest -q

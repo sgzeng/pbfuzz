@@ -1,0 +1,18 @@
+node_modules/
+lib/
+dist/
+*.tsbuildinfo
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.pbfuzz/
+.DS_Store
+
+# agent instruction files (local only)
+AGENTS.md
+CLAUDE.md
+.claude/
+.local/

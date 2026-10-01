@@ -1,0 +1,12 @@
+1000,3254276372,8017518024338118836,/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/fuzz.c:4
+1001,3254384085,15822663052811949562,/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/fuzz.c:7
+1002,3990615742,1218574720741507226,/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/helper.c:2
+1003,3990759492,2195283515793704193,/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/helper.c:6
+1004,2839764142,9337407029252913682,/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/helper.c:10
+1005,2839872018,7632122815048565931,/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/helper.c:13
+1006,2839907865,7632122815048565931,/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/helper.c:14
+1007,2839907929,7632122815048565931,/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/helper.c:14
+1008,2839907993,7632122815048565931,/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/helper.c:14
+1009,2839943829,7632122815048565931,/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/helper.c:15
+1010,3990576805,7632122815048565931,/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/helper.c:17
+1011,3990577892,7632122815048565931,/mnt/work/pbfuzz/acceptance-run/work/L1-kanalyzer/scratch/toyproj/helper.c:18
