@@ -29,7 +29,10 @@ fi
 . scripts/ensure-deps.sh
 ensure_node
 
-DSH=(npx --yes @deepseek-ai/dsh)
+# Pin the DSH launcher to the version the plugins are verified against: a bare
+# `npx @deepseek-ai/dsh` resolves npm `latest`, which can sit outside the plugins' peer range.
+DSH_VERSION=$(sed -n 's/^DSH_VERSION=//p' HARNESS_COMMIT)
+DSH=(npx --yes "@deepseek-ai/dsh@$DSH_VERSION")
 add() { echo "==> dsh plugin add $1"; "${DSH[@]}" plugin --profile "$PROFILE" add "$PWD/$(ls dist/$1-*.tgz)"; }
 add pbfuzz-dsh-pbfuzz
 [ "$WITH_KANALYZER" = 0 ] || add pbfuzz-dsh-kanalyzer
@@ -57,9 +60,9 @@ echo "==> pbfuzz.execution.pythonPath = $VENV_PY"
 
 cat <<MSG
 
-Installed into DSH profile '$PROFILE'. Start (or restart) the server:
+Installed into DSH profile '$PROFILE'. Start (or restart) DSH with the same pinned version:
 
-  npx @deepseek-ai/dsh web
+  npx @deepseek-ai/dsh@$DSH_VERSION --profile $PROFILE
 
 Then open a session in your target repo and type:  /pbfuzz <describe the bug>
 MSG

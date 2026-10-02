@@ -15,6 +15,12 @@ verbatim as `bug.targets`, so kanalyzer's `-target-list` and this campaign's tar
 When a target's KAMain outputs already exist (Magma's own pre-built images, or one produced by
 `kanalyzer_analyze` on a previous run), `prebuilt_dir` is threaded straight through as
 `analysis.static.prebuilt_dir` — the "Magma SKIP_STATIC_ANALYSIS path" the schema names by name.
+Without kanalyzer at all, `static_analysis=False` records static analysis as disabled and drops the
+deviation detector to `target_only`, which is all a campaign needs to run on gdb traces alone.
+
+The emitted dict carries only keys `contracts/campaign.schema.json` declares: the plugin's
+`/pbfuzz run` validator rejects anything else, so provenance goes in a YAML comment header
+(`campaign_to_yaml(..., header=...)`) rather than in the document.
 
 This module only builds and serialises the campaign dict; it does not touch the filesystem beyond
 what the CLI's `--write` flag asks for, so it is exercised with plain unit tests.
@@ -27,7 +33,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -85,7 +91,8 @@ class MagmaAdapterInput:
         language: `target.language`; Magma benchmarks are C/C++.
         entry_cwd: `entry.cwd`, when the binary must run from a specific directory.
         input_channel: `entry.input_channel`; Magma's `afl_driver.cpp` harnesses take a file.
-        bug_patch: Path to `<BUG_ID>.patch`, recorded as `bug.source.path`.
+        bug_patch: Path to `<BUG_ID>.patch`, named in the yaml's provenance header (the campaign
+            schema's `bug` carries only `targets`).
         bitcode: The `*.0.0.preopt.bc` KAMain would analyse fresh (mode `lto`/`wllvm`).
         entries: KAMain `-entry-list`; Magma's harnesses have no `LLVMFuzzerTestOneInput` symbol
             once linked into the AFL driver, so `main` is the correct default.
@@ -96,9 +103,9 @@ class MagmaAdapterInput:
         seeds_dir: `analysis.corpus.seeds_dir`; Magma ships one per target under
             `magma/targets/<name>/corpus/<program>`.
         output_dir: `output.dir`; defaults to `<target_repo>/.pbfuzz/<campaign_id>`.
-        call_stack_len: KAMain `-call-stack-len`; Magma's own `instrument.sh` passes 20.
-        type_based_callgraph: KAMain `-type-based-callgraph`; Magma's own `instrument.sh` passes
-            true (a signature-based call graph, not TyPM/MLTA).
+        static_analysis: False when kanalyzer is not installed and no `prebuilt_dir` exists:
+            static analysis is recorded as disabled and deviation detection drops to
+            `target_only` (`critical_bb` needs static analysis).
     """
 
     target_name: str
@@ -118,8 +125,7 @@ class MagmaAdapterInput:
     lto_libs: tuple[str, ...] = ()
     seeds_dir: str | None = None
     output_dir: str | None = None
-    call_stack_len: int = 20
-    type_based_callgraph: bool = True
+    static_analysis: bool = True
 
 
 def parse_bbtargets(text: str) -> tuple[str, ...]:
@@ -159,12 +165,41 @@ def _default_campaign_id(input: MagmaAdapterInput) -> str:
     return f"{input.target_name}-{input.bug_id}".lower()
 
 
-def build_campaign(input: MagmaAdapterInput, *, now: datetime | None = None) -> dict[str, Any]:
+def find_magma_log_condition(target_repo: str | Path, location: str) -> str | None:
+    """Read the `MAGMA_LOG(...)` condition at a `file:line` target from the patched source tree.
+
+    `BBtargets.txt` names files by basename (`instrument.sh` strips directories), so the file is
+    looked up at the repo root first, then anywhere below it; the first copy whose line carries a
+    `MAGMA_LOG` call wins.
+
+    Args:
+        target_repo: The patched target source tree.
+        location: A `file:line` target.
+
+    Returns:
+        The condition expression, or `None` when no file in the tree has a `MAGMA_LOG` call there.
+    """
+    name, _, line_no = location.rpartition(":")
+    repo = Path(target_repo)
+    candidates = [repo / name] + sorted(p for p in repo.rglob(Path(name).name) if p != repo / name)
+    for path in candidates:
+        try:
+            lines = path.read_text(errors="replace").splitlines()
+        except OSError:
+            continue
+        index = int(line_no) - 1
+        if 0 <= index < len(lines):
+            condition = parse_magma_log_condition(lines[index])
+            if condition is not None:
+                return condition
+    return None
+
+
+def build_campaign(input: MagmaAdapterInput) -> dict[str, Any]:
     """Build a confirmed campaign dict for one Magma bug.
 
     Args:
         input: Everything the adapter needs (see `MagmaAdapterInput`).
-        now: Clock, injected for tests; defaults to the real current UTC time.
 
     Returns:
         A dict matching `contracts/campaign.schema.json`, with `confirmed: true` already set —
@@ -181,41 +216,33 @@ def build_campaign(input: MagmaAdapterInput, *, now: datetime | None = None) -> 
             f"{input.bug_id}: no target locations given — parse the target's BBtargets.txt with "
             "parse_bbtargets() first; a Magma bug always has at least one MAGMA_LOG call site."
         )
-    ts = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     campaign_id = input.campaign_id or _default_campaign_id(input)
     binary_name = Path(input.binary).name
     run_cmd = input.run_cmd or f"{input.binary} @@"
     output_dir = input.output_dir or str(Path(input.target_repo) / ".pbfuzz" / campaign_id)
 
-    bug_source: dict[str, Any] = {}
-    if input.bug_patch is not None:
-        bug_source["path"] = input.bug_patch
-    primary_condition = next((t.condition for t in input.targets if t.condition), None)
-    description = (
-        f"Magma bug {input.bug_id} in {input.target_name}: magma_log(\"{input.bug_id}\", condition) "
-        f"is called at {input.targets[0].location}"
-        + (f"; the injected bug fires when {primary_condition}" if primary_condition else "")
-        + ". Magma's own instrumentation (magma/src/canary.c) prints "
-        f"'{_REACHED_TEMPLATE.format(bug_id=input.bug_id)}' to stderr whenever that call site runs, "
-        f"and '{_TRIGGERED_TEMPLATE.format(bug_id=input.bug_id)}' when the condition holds — "
-        "the existing oracle this campaign reuses."
-    )
-
-    static: dict[str, Any] = {"enabled": True, "provider": "kanalyzer"}
-    if input.prebuilt_dir is not None:
-        static["mode"] = "prebuilt"
-        static["prebuilt_dir"] = input.prebuilt_dir
+    static: dict[str, Any]
+    deviation: dict[str, Any] = {"enabled": True, "mode": "critical_bb"}
+    if not input.static_analysis and input.prebuilt_dir is None:
+        static = {
+            "enabled": False,
+            "disabled_reason": "no kanalyzer install and no pre-built KAMain output for this target",
+        }
+        deviation["mode"] = "target_only"
     else:
-        static["mode"] = "lto"
-        if input.bitcode is not None:
-            static["bitcode"] = input.bitcode
-        if input.entries:
-            static["entries"] = list(input.entries)
-        if input.lto_libs:
-            static["lto_libs"] = list(input.lto_libs)
-    static["program"] = binary_name
-    static["call_stack_len"] = input.call_stack_len
-    static["type_based_callgraph"] = input.type_based_callgraph
+        static = {"enabled": True}
+        if input.prebuilt_dir is not None:
+            static["mode"] = "prebuilt"
+            static["prebuilt_dir"] = input.prebuilt_dir
+        else:
+            static["mode"] = "lto"
+            if input.bitcode is not None:
+                static["bitcode"] = input.bitcode
+            if input.entries:
+                static["entries"] = list(input.entries)
+            if input.lto_libs:
+                static["lto_libs"] = list(input.lto_libs)
+        static["program"] = binary_name
 
     corpus: dict[str, Any]
     if input.seeds_dir is not None:
@@ -227,7 +254,6 @@ def build_campaign(input: MagmaAdapterInput, *, now: datetime | None = None) -> 
         "kind": "executable",
         "run_cmd": run_cmd,
         "input_channel": input.input_channel,
-        "binary": input.binary,
     }
     if input.entry_cwd is not None:
         entry["cwd"] = input.entry_cwd
@@ -236,14 +262,8 @@ def build_campaign(input: MagmaAdapterInput, *, now: datetime | None = None) -> 
         "version": 1,
         "id": campaign_id,
         "confirmed": True,
-        "confirmed_at": ts,
         "target": {"repo": input.target_repo, "language": input.language},
-        "bug": {
-            "kind": "patch" if input.bug_patch is not None else "trigger_condition",
-            **({"source": bug_source} if bug_source else {}),
-            "description": description,
-            "targets": [t.to_dict() for t in input.targets],
-        },
+        "bug": {"targets": [t.to_dict() for t in input.targets]},
         "entry": entry,
         "oracle": {
             "mode": "preexisting",
@@ -253,19 +273,42 @@ def build_campaign(input: MagmaAdapterInput, *, now: datetime | None = None) -> 
         },
         "tracer": "auto",
         "output": {"dir": output_dir},
-        "analysis": {"static": static, "corpus": corpus, "deviation": {"enabled": True, "mode": "critical_bb"}},
-        "notes": (
-            f"Generated by the Magma adapter (engine/pbfuzz_engine/adapters/magma.py) for "
-            f"{input.target_name}/{input.bug_id}. oracle.mode is preexisting because Magma's own "
-            "canary.c already emits the reach/trigger markers; no canary insertion or rebuild is "
-            "needed. bug.targets is BBtargets.txt verbatim, so kanalyzer's -target-list and this "
-            "campaign's target always agree."
-        ),
+        "analysis": {"static": static, "corpus": corpus, "deviation": deviation},
     }
     return campaign
 
 
-def campaign_to_yaml(campaign: dict[str, Any]) -> str:
+def provenance_header(input: MagmaAdapterInput, *, now: datetime | None = None) -> str:
+    """The comment block `campaign_to_yaml` puts above a generated campaign.
+
+    Args:
+        input: The adapter input the campaign was built from.
+        now: Clock, injected for tests; defaults to the real current UTC time.
+
+    Returns:
+        Plain text, one line per comment line (no `#` prefixes).
+    """
+    ts = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    lines = [
+        f"Generated {ts} by the Magma adapter (engine/pbfuzz_engine/adapters/magma.py) for "
+        f"{input.target_name}/{input.bug_id}.",
+        f"Bug: Magma {input.bug_id} — MAGMA_LOG(\"{input.bug_id}\", <condition>) at "
+        + ", ".join(t.location for t in input.targets) + "; the bug triggers when <condition> holds "
+        "(bug.targets[].condition).",
+    ]
+    if input.bug_patch is not None:
+        lines.append(f"Bug patch (injects the bug and its MAGMA_LOG canary): {input.bug_patch}")
+    lines += [
+        f"Oracle: magma/src/canary.c prints '{_REACHED_TEMPLATE.format(bug_id=input.bug_id)}' / "
+        f"'{_TRIGGERED_TEMPLATE.format(bug_id=input.bug_id)}' to stderr; oracle.mode is preexisting, "
+        "so no canary insertion or rebuild is needed.",
+        "confirmed: true because every field traces back to Magma's own ground truth (the bug "
+        "patch, BBtargets.txt, the built binary).",
+    ]
+    return "\n".join(lines)
+
+
+def campaign_to_yaml(campaign: dict[str, Any], *, header: str | None = None) -> str:
     """Serialise a campaign dict the way `pbfuzz_campaign draft` would write one to disk.
 
     Plain YAML (no `# inferred:` provenance comments): those annotate values a *questionnaire*
@@ -275,11 +318,15 @@ def campaign_to_yaml(campaign: dict[str, Any]) -> str:
 
     Args:
         campaign: A dict from `build_campaign()`.
+        header: Optional text emitted as `#` comment lines above the document.
 
     Returns:
         The YAML text, `\n`-terminated.
     """
-    return yaml.safe_dump(campaign, sort_keys=False, default_flow_style=False, allow_unicode=True)
+    body = yaml.safe_dump(campaign, sort_keys=False, default_flow_style=False, allow_unicode=True)
+    if header is None:
+        return body
+    return "".join(f"# {line}".rstrip() + "\n" for line in header.splitlines()) + body
 
 
 def _parse_target_arg(raw: str) -> MagmaTarget:
@@ -295,7 +342,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         prog="python -m pbfuzz_engine.adapters.magma",
         description=(
             "Generate a confirmed pbfuzz.campaign.yaml for one Magma bug, for headless runs "
-            "(`dsh --profile pbfuzz-headless \"/pbfuzz run <path>\"`)."
+            "(`dsh --profile headless \"/pbfuzz run <path>\"`)."
         ),
     )
     parser.add_argument("--target-name", required=True, help="Magma target directory name, e.g. lua.")
@@ -319,9 +366,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--entries", action="append", default=[])
     parser.add_argument("--prebuilt-dir")
     parser.add_argument("--lto-lib", dest="lto_libs", action="append", default=[])
+    parser.add_argument(
+        "--no-static-analysis", dest="static_analysis", action="store_false",
+        help="Record static analysis as disabled (no kanalyzer, no --prebuilt-dir); deviation becomes target_only.",
+    )
     parser.add_argument("--seeds-dir")
     parser.add_argument("--output-dir")
-    parser.add_argument("--call-stack-len", type=int, default=20)
     parser.add_argument("--write", help="Write the yaml here instead of stdout.")
     return parser
 
@@ -334,6 +384,13 @@ def main(argv: list[str] | None = None) -> int:
         text = Path(args.bbtargets).read_text()
         known = {t.location for t in targets}
         targets.extend(MagmaTarget(location=loc) for loc in parse_bbtargets(text) if loc not in known)
+    # The predicate at each MAGMA_LOG call site is the bug's trigger condition; hand it to the agent.
+    targets = [
+        t if t.condition is not None
+        else MagmaTarget(location=t.location, condition=find_magma_log_condition(args.target_repo, t.location),
+                         evidence=t.evidence)
+        for t in targets
+    ]
     if not targets:
         print(
             "error: no target locations — pass --bbtargets <file> and/or one or more --target file:line",
@@ -359,9 +416,9 @@ def main(argv: list[str] | None = None) -> int:
         lto_libs=tuple(args.lto_libs),
         seeds_dir=args.seeds_dir,
         output_dir=args.output_dir,
-        call_stack_len=args.call_stack_len,
+        static_analysis=args.static_analysis,
     )
-    text = campaign_to_yaml(build_campaign(campaign_input))
+    text = campaign_to_yaml(build_campaign(campaign_input), header=provenance_header(campaign_input))
     if args.write is not None:
         out_path = Path(args.write)
         out_path.parent.mkdir(parents=True, exist_ok=True)

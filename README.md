@@ -17,10 +17,12 @@ git clone <this-repo-url> pbfuzz-dsh && cd pbfuzz-dsh
 
 **2. Set up DeepSeek Harness** (skip if you already have it) — follow the
 [official docs](https://deepseek-harness.github.io/deepseek-harness/) to install DSH and configure
-your DeepSeek API key. The quickest check that it works:
+your DeepSeek API key. Use the DSH version these plugins are verified against (`DSH_VERSION` in
+[`HARNESS_COMMIT`](HARNESS_COMMIT)); npm's `latest` can be outside their peer range. The quickest
+check that it works:
 
 ```sh
-npx @deepseek-ai/dsh web
+npx @deepseek-ai/dsh@0.1.5-rc.1 web
 ```
 
 **3. Install pbfuzz**
@@ -29,8 +31,8 @@ npx @deepseek-ai/dsh web
 ./install.sh
 ```
 
-That builds the plugins and the Python engine and adds them to DSH. Restart `npx @deepseek-ai/dsh web`
-and you're done.
+That builds the plugins and the Python engine and adds them to DSH. Restart
+`npx @deepseek-ai/dsh@0.1.5-rc.1 web` and you're done.
 
 | Script | Does |
 |---|---|
@@ -65,7 +67,8 @@ Settings (tracer, budget caps, oracle defaults, which auxiliary analyses are on)
 `budget.maxPierRounds`, `budget.campaignWallTimeMin`, `budget.maxConsecutiveForcedContinues` — are
 the only brake on an unattended run; reaching one stops the campaign for real (`phase: STOPPED`).
 
-Worked examples for C/C++, Python and Java targets are in [`examples/`](examples/).
+Worked examples for C/C++, Python and Java targets are in [`examples/`](examples/); headless runs
+on Magma benchmark bugs are in [`examples/magma/`](examples/magma/).
 
 ## How it works
 

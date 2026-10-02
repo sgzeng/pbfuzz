@@ -1,5 +1,9 @@
 packages:
   - 'packages/*'
+# pnpm 11 fails `pnpm install` on any dependency build script it was not told about
+# (ERR_PNPM_IGNORED_BUILDS). esbuild's postinstall only verifies its platform binary.
+allowBuilds:
+  esbuild: true
 # Transitive DSH packages whose npm `latest` tag lags (0.0.1-rc.1) resolve to stale
 # versions; pin them to DSH_VERSION (HARNESS_COMMIT) so every DSH peer is satisfied.
 overrides:
