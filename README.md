@@ -3,7 +3,7 @@
 **PBFuzz** (the CCS'26 agentic directed fuzzer) as plugins for
 [DeepSeek Harness (DSH)](https://deepseek-harness.github.io/deepseek-harness/).
 Point the agent at a target repo and a bug (a CVE, a patch, a crash trace, or just `file:line`);
-it runs a directed-fuzzing loop until it produces a **verified Proof-of-Vulnerability** — input.
+it runs a directed-fuzzing loop until it produces a **verified Proof-of-Vulnerability** input.
 
 ## Quick start
 
@@ -20,8 +20,8 @@ your DeepSeek API key. Use the DSH version these plugins are verified against (`
 npx @deepseek-ai/dsh@0.2.0-rc.2 plugin --profile web add @pbfuzz/dsh-pbfuzz
 ```
 
-That is all: the package ships the Python engine, its schemas and PyYAML, so there is nothing to
-build or `pip install`. Then start DSH with `npx @deepseek-ai/dsh@0.2.0-rc.2 web`.
+That is all: the package ships the Python engine, its schemas and PyYAML.
+Then start DSH with `npx @deepseek-ai/dsh@0.2.0-rc.2 web`.
 
 Optional static analysis (C/C++ reachability; needs an LLVM 14 toolchain, see
 [`packages/dsh-kanalyzer`](packages/dsh-kanalyzer)):
@@ -29,9 +29,6 @@ Optional static analysis (C/C++ reachability; needs an LLVM 14 toolchain, see
 ```sh
 npx @deepseek-ai/dsh@0.2.0-rc.2 plugin --profile web add @pbfuzz/dsh-kanalyzer
 ```
-
-Every push to `master` is published to npm as `0.1.<commit count>` (tag `latest`) by
-[`ci.yml`](.github/workflows/ci.yml), so `add` always installs the current `master`.
 
 Manage the install with the same `plugin` command (add `--profile NAME` for a profile other than
 `web`), and restart DSH afterwards:
