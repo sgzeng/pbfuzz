@@ -35,6 +35,19 @@ npx @deepseek-ai/dsh@0.2.0-rc.2 plugin --profile web add @pbfuzz/dsh-kanalyzer
 Every push to `master` is published to npm as `0.1.<commit count>` (tag `latest`) by
 [`ci.yml`](.github/workflows/ci.yml), so `add` always installs the current `master`.
 
+Manage the install with the same `plugin` command (add `--profile NAME` for a profile other than
+`web`), and restart DSH afterwards:
+
+```sh
+npx @deepseek-ai/dsh@0.2.0-rc.2 plugin --profile web list                              # installed plugins and versions
+npx @deepseek-ai/dsh@0.2.0-rc.2 plugin --profile web add @pbfuzz/dsh-pbfuzz@0.1.14     # a specific release
+npx @deepseek-ai/dsh@0.2.0-rc.2 plugin --profile web remove @pbfuzz/dsh-pbfuzz
+```
+
+To move to a newer release, `add` it by exact version; `npm view @pbfuzz/dsh-pbfuzz version`
+prints the newest one. Releases are listed at
+[npmjs.com/package/@pbfuzz/dsh-pbfuzz](https://www.npmjs.com/package/@pbfuzz/dsh-pbfuzz).
+
 ### From source
 
 ```sh
