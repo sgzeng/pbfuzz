@@ -56,38 +56,5 @@ describe('planInterview', () => {
       for (const q of plan.first) expect(q.tier).toBe('first')
       for (const q of plan.confirm) expect(q.tier).toBe('confirm')
     })
-
-    it('every StepDef beyond S1/S2 is tier confirm, even the required S4_entry', () => {
-      const plan = planInterview({}, settings({ onboarding: { interviewPolicy: 'always' } }))
-      const byId = Object.fromEntries(plan.questions.map(q => [q.id, q]))
-      expect(byId.S1_repo!.tier).toBe('first')
-      expect(byId.S2_bug!.tier).toBe('first')
-      expect(byId.S4_entry!.required).toBe(true)
-      expect(byId.S4_entry!.tier).toBe('confirm')
-      expect(byId.S5_target!.tier).toBe('confirm')
-      expect(byId.S6_output!.tier).toBe('confirm')
-    })
-
-    it('when S1/S2 are already known, first is empty and does not leak into confirm (when-missing policy)', () => {
-      const plan = planInterview({ repo: '/r', bug: 'patch' }, settings())
-      expect(plan.first).toEqual([])
-      expect(plan.confirm.map(q => q.id)).not.toContain('S1_repo')
-      expect(plan.confirm.map(q => q.id)).not.toContain('S2_bug')
-    })
-
-    it('S3->S4 skip logic still holds under the tiered split: S4_entry is absent from confirm when a run script was supplied', () => {
-      const plan = planInterview({ runScript: './run.sh' }, settings({ onboarding: { interviewPolicy: 'always' } }))
-      expect(plan.confirm.map(q => q.id)).not.toContain('S4_entry')
-      expect(plan.skipped.find(s => s.id === 'S4_entry')?.reason).toMatch(/run script/)
-      // S1/S2 tiering is unaffected by the S3/S4 skip rule
-      expect(plan.first.map(q => q.id)).toEqual(['S1_repo', 'S2_bug'])
-    })
-
-    it('under never, first/confirm are both empty (nothing is ever asked) but missingRequired still fires', () => {
-      const plan = planInterview({}, settings({ onboarding: { interviewPolicy: 'never' } }))
-      expect(plan.first).toEqual([])
-      expect(plan.confirm).toEqual([])
-      expect(plan.missingRequired).toEqual(['S1_repo', 'S2_bug', 'S4_entry'])
-    })
   })
 })

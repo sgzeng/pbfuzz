@@ -254,7 +254,7 @@ def test_jdb_real(java_toy):
     asynchronous), so `exit` used to kill the VM before the class loaded and
     every breakpoint came back `resolved: None, hits: 0`. This exercises the
     real interactive feed end to end, which the canned-transcript unit test
-    (test_jdb_session_and_transcript_parsing) cannot: it never touches a real
+    (test_jdb_transcript_parsing) cannot: it never touches a real
     jdb process, so it could not have caught this.
     """
     d = java_toy
@@ -274,7 +274,6 @@ def test_jdb_real(java_toy):
     assert hit["resolved"] is True and hit["hitTimes"] == 1
     assert hit["function"] == "JdbToy.parse"
     assert out["reached"] is True  # jdb never reports the debuggee's exit code, unlike gdb/lldb
-
 
     out = trace_run({"campaign": campaign, "input": str(d / "miss.bin"), "timeoutSec": 40, "breakpoints": [
         {"location": f"{src}:{JAVA_TARGET_LINE}"},

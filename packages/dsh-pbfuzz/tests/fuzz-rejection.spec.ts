@@ -49,6 +49,16 @@ describe('fuzzRejection', () => {
     expect(text).toContain('/g.py:3:1: invalid syntax')
   })
 
+  it('still names a preflight miss when the engine reported only the input size and stderr', () => {
+    const text = fuzzRejection({
+      planIssues: [],
+      validation: { ok: false, samples: [{ source: 'next_batch_plan[0]', size: 4, reach: { ranTarget: true, reached: false, stderrTail: 'segfault at 0xdeadbeef, entry_addr never hit' } }] },
+      generatorPath: '/g.py',
+    })!
+    expect(text).toContain('no entry reached the target')
+    expect(text).toContain('→ 4 bytes → exit ?; stderr: segfault at 0xdeadbeef, entry_addr never hit')
+  })
+
   it('says nothing about the preflight when an entry did reach the target', () => {
     const text = fuzzRejection({
       planIssues: [{ path: 'x', message: 'y' }],

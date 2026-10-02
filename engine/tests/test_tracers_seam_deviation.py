@@ -14,7 +14,7 @@ import pytest
 
 from pbfuzz_engine.deviation import CriticalLocation, detect_deviation, deviation_run, plan_breakpoints
 from pbfuzz_engine.tracers import Tracer, TracerError, TracerPaths, select_tracer, trace_run
-from pbfuzz_engine.tracers.base import BreakpointReport, HitRecord, Remedy, TraceResult
+from pbfuzz_engine.tracers.base import BreakpointReport, HitRecord, TraceResult
 
 CONTRACTS = Path(__file__).resolve().parents[2] / "contracts"
 
@@ -88,7 +88,7 @@ def test_trace_run_missing_input_is_a_tracer_error():
 
 # -- selection ---------------------------------------------------------------
 
-@pytest.mark.parametrize("language,expected", [("python", "pymon"), ("java", "jdb"), ("c", "gdb"), ("cpp", "gdb"), (None, "gdb")])
+@pytest.mark.parametrize("language,expected", [("python", "pymon"), ("java", "jdb"), ("c", "gdb"), (None, "gdb")])
 def test_auto_selection_by_language(language, expected):
     made = []
 

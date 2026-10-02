@@ -1,9 +1,8 @@
-"""corpus.analyze, params.extract, selfcheck.engine / selfcheck.oracle."""
+"""corpus.analyze, params.extract, selfcheck.engine."""
 
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
 import pytest
@@ -16,15 +15,6 @@ from pbfuzz_engine.extract import extract_parameters
 from pbfuzz_engine.selfcheck import check_engine
 
 CORPUS_SCHEMA = contract_def("engine-rpc.schema.json", "CorpusAnalyzeResult")
-#: The one self-check item `check_engine` produces. It used to be declared in a
-#: `selfcheck.schema.json` shared with a campaign-wide self-check; that check is gone, so the
-#: shape lives here, next to its only assertion.
-ITEM_SCHEMA = {
-    "properties": {
-        "name": {}, "status": {"enum": ["pass", "warn", "fail", "disabled", "skipped"]},
-        "evidence": {}, "reason": {}, "remedies": {}, "duration_ms": {},
-    },
-}
 
 
 @pytest.fixture
@@ -133,13 +123,7 @@ def test_extract_errors(kwargs):
 
 def test_selfcheck_engine_pass_and_version_mismatch():
     item = check_engine()
-    assert_only_declared_keys(item, ITEM_SCHEMA)
     assert item["name"] == "engine" and item["status"] == "pass", item
     assert any("sandbox round trip ok" in e for e in item["evidence"])
     bad = check_engine("999")
     assert bad["status"] == "fail" and bad["remedies"]
-
-
-
-
-

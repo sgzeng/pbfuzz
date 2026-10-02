@@ -30,8 +30,7 @@ change; do not hand-edit a `generated/` file.
 - `packages/dsh-pbfuzz/src/generated/policy.ts` — `policy.json` as a TS `as const` literal
 - `engine/pbfuzz_engine/generated/contracts.py` — NOT pydantic models. It is a schema-file
   loader (`load_schema()` + `SCHEMA_FILES`) the engine uses to read a contract schema by name at
-  runtime; `campaign.py`'s hand-written validator is checked against the live schema separately,
-  by `engine/tests/test_campaign_schema_sync.py`.
+  runtime; `campaign.py` validates campaigns with a hand-written validator instead.
 
 Generated files are committed so a git install needs no codegen step.
 

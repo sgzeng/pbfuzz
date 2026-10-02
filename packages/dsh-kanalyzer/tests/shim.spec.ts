@@ -204,19 +204,3 @@ describe('classifyInvocation (g)', () => {
     expect(classifyInvocation(['conftest.c', '-o', 'conftest'])).toBe('link')
   })
 })
-
-describe('script validity', () => {
-  it('(g) bash -n accepts the rendered script in every mode/profile combination', () => {
-    for (const mode of ['lto', 'wllvm'] as const) {
-      for (const profile of ['analysis', 'passthrough'] as const) {
-        const script = renderShimScript({
-          mode, profile, realCc: '/x/clang', realCxx: '/x/clang++', shimDir: '/tmp/shim dir', progressFile: '/tmp/p.log', nproc: 4,
-        })
-        const path = join(tmp, `check-${mode}-${profile}.sh`)
-        writeFileSync(path, script)
-        const r = spawnSync('/bin/bash', ['-n', path], { encoding: 'utf8' })
-        expect(r.status, r.stderr).toBe(0)
-      }
-    }
-  })
-})

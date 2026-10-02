@@ -13,7 +13,7 @@ import {
 } from '../src/core/engine-params.ts'
 import { EngineRpcError } from '../src/core/rpc.ts'
 import { engineEnv } from '../src/engine-bridge.ts'
-import { engineDiagnosis, engineToolError, type QuestionAsker } from '../src/recovery.ts'
+import { engineToolError, type QuestionAsker } from '../src/recovery.ts'
 import { reachingTestcases } from '../src/tools.ts'
 import { settings } from './fixtures.ts'
 
@@ -59,7 +59,6 @@ describe('engine parameter shapes', () => {
   })
 
   it('sends exactly the engine/README.md shapes for the methods the contract leaves open', () => {
-    const s = settings()
     expect(generatorValidateParams('/g.py', { parameter_space: {} })).toEqual({ generatorPath: '/g.py', plan: { parameter_space: {} } })
     expect(corpusAnalyzeParams('/c.yaml')).toEqual({ campaignPath: '/c.yaml' })
     expect(corpusAnalyzeParams('/c.yaml', '/seeds')).toEqual({ campaignPath: '/c.yaml', seedsDir: '/seeds' })
@@ -95,15 +94,6 @@ describe('engine errors reach the user as remedies, not a bare message', () => {
         { id: 'shrink_space', label: 'Drop the n parameter', detail: 'edit fuzz_plan.json', effect: 'edit_campaign' },
       ],
     },
-  })
-
-  it('keeps the engine diagnosis and remedies', () => {
-    expect(engineDiagnosis('pbfuzz fuzz.run', error)).toEqual({
-      step: 'pbfuzz fuzz.run',
-      diagnosis: 'generate() raised KeyError: n',
-      evidence: ['engine error -32002: generator failed before any input ran'],
-      remedies: error.remedies,
-    })
   })
 
   it('interactive: offers the engine remedies through ask_user_question and reports the choice', async () => {

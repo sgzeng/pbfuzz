@@ -8,10 +8,7 @@
  *
  * The Python side (`generatePython()` below) does NOT emit pydantic models — it emits
  * `generated/contracts.py`, a small loader (`load_schema()` + `SCHEMA_FILES`) that reads the
- * schema files at runtime. `campaign.py`'s hand-written validator is checked against the live
- * schema by `engine/tests/test_campaign_schema_sync.py`, which round-trips example campaigns
- * through both it and `engine/hooks/pbfuzz_hooks/schema.py` (a real, dependency-free JSON-Schema
- * validator) and asserts the verdicts agree.
+ * schema files at runtime. `campaign.py` validates campaigns by hand rather than through it.
  *
  * Usage:
  *   node scripts/codegen.mjs           regenerate in place
@@ -105,8 +102,7 @@ async function generateTypes(files, banner = BANNER_TS) {
  * Build `generated/contracts.py` — NOT pydantic models. It is a schema-file loader
  * (`load_schema()` + `SCHEMA_FILES`) that lets the engine read a contract schema by name at
  * runtime; nothing here parses the schema into Python classes. `campaign.py` validates
- * `pbfuzz.campaign.yaml` by hand, and its agreement with the schema is checked separately by
- * `engine/tests/test_campaign_schema_sync.py`.
+ * `pbfuzz.campaign.yaml` by hand.
  *
  * The schema directory comes from `_contracts_dir.py` (hand-written, NOT generated, a sibling
  * of `generated/` under `engine/pbfuzz_engine/`), which resolves `$PBFUZZ_CONTRACTS_DIR` first

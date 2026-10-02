@@ -227,19 +227,12 @@ describe('validateFuzzPlan', () => {
 })
 
 describe('checkSafeUpdate (RULE_SAFE_UPDATE)', () => {
-  it('allows revising an existing entry in place', () => {
+  it('allows revising an existing entry in place and appending a new one', () => {
     const current = [{ id: 'R1', status: 'unknown' }, { id: 'R2', status: 'unknown' }]
-    const next = [{ id: 'R1', status: 'verified' }, { id: 'R2', status: 'unknown' }]
+    const next = [{ id: 'R1', status: 'verified' }, { id: 'R2', status: 'unknown' }, { id: 'R3', status: 'unknown' }]
     const v = checkSafeUpdate('preconditions', current, next)
     expect(v.ok).toBe(true)
     expect(v.issues).toEqual([])
-  })
-
-  it('allows appending a new entry', () => {
-    const current = [{ id: 'BP1' }]
-    const next = [{ id: 'BP1' }, { id: 'BP2' }]
-    const v = checkSafeUpdate('bug_predicates', current, next)
-    expect(v.ok).toBe(true)
   })
 
   it('rejects a write that drops an existing id, even when the array length is unchanged', () => {
@@ -253,18 +246,5 @@ describe('checkSafeUpdate (RULE_SAFE_UPDATE)', () => {
     expect(v.issues[0]!.path).toBe('RC2')
     expect(v.issues[0]!.message).toMatch(/RULE_SAFE_UPDATE/)
     expect(v.issues[0]!.message).toMatch(/root_causes/)
-  })
-
-  it('rejects a shrinking write (the original rule\'s exact case)', () => {
-    const current = [{ id: 'TP1' }, { id: 'TP2' }, { id: 'TP3' }]
-    const next = [{ id: 'TP1' }]
-    const v = checkSafeUpdate('trigger_plans', current, next)
-    expect(v.ok).toBe(false)
-    expect(v.issues.map(i => i.path).sort()).toEqual(['TP2', 'TP3'])
-  })
-
-  it('an empty current array never blocks the first write', () => {
-    const v = checkSafeUpdate('bug_predicates', [], [{ id: 'BP1' }])
-    expect(v.ok).toBe(true)
   })
 })

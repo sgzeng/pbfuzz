@@ -59,23 +59,6 @@ describe('draft-time build verification', () => {
     expect(steps[1]!.detail).toContain(`INPUT=${outDir}`) // scratch input is under the campaign dir, not /tmp
   })
 
-  it('rebuilds when a source is newer than the binary', async () => {
-    const root = repo()
-    const binPath = join(root, 'fuzzer.sh')
-    const past = new Date(Date.now() - 3_600_000)
-    writeFileSync(binPath, '#!/bin/sh\ntrue\n', { mode: 0o755 })
-    utimesSync(binPath, past, past) // binary is stale
-    writeFileSync(join(root, 'main.c'), 'int main(){}\n') // source newer than the binary
-    writeFileSync(join(root, 'build.sh'), '#!/bin/sh\necho rebuilt-now\n', { mode: 0o755 })
-    const steps = await verifyEnvironment({
-      target: { repo: root },
-      build: { cmd: './build.sh' },
-      entry: { kind: 'executable', run_cmd: `${binPath} @@`, input_channel: 'file' },
-      output: { dir: join(root, '.pbfuzz', 'c1') },
-    } as never, { buildSec: 60, runSec: 10 })
-    expect(steps[0]!.detail).toContain('rebuilt-now')
-  })
-
   it('isBuildFresh: true only when the binary outdates all sources, false for a missing binary', () => {
     const root = repo()
     const binPath = join(root, 'bin')

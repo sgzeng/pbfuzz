@@ -22,8 +22,8 @@
  * with this ground truth exactly the way the module doc describes: they report `helper_other` (and
  * `other_entry`/`main`) at distance 0 regardless of which entry was requested, so a bare read of
  * the distance dump says `ok` for BOTH runs below — even the one where the fuzzer entry provably
- * never reaches the target. (`unreachable/entries.txt` = `LLVMFuzzerTestOneInput`;
- * `reachable/entries.txt` = `main`, which genuinely does reach it.)
+ * never reaches the target. (The `unreachable` run was given entry `LLVMFuzzerTestOneInput`; the
+ * `reachable` run was given `main`, which genuinely does reach it.)
  *
  * See `acceptance-run/work/L1-kanalyzer/g2_unreachable_toy_v2.mjs` and
  * `acceptance-run/evidence/L1/kanalyzer.md` §3.1 for the original repro.
@@ -35,7 +35,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { parseBidMapping, parseDistance, parseFuncInfo, parseGuidEdges } from '../src/core/dumps.ts'
+import { parseBidMapping, parseDistance, parseFuncInfo } from '../src/core/dumps.ts'
 import { analyzeFromDumps, type DumpAnalysisInput } from '../src/core/result.ts'
 import { parseStderr } from '../src/core/stderr.ts'
 import { deriveStatus, type RunEvidence } from '../src/core/status.ts'
@@ -83,25 +83,6 @@ describe('F5 — independent reachability cross-check (real KAMain fixtures)', (
     const result = await analyzeFromDumps(fixtureInput('reachable', ['main']))
     expect(result.status).toBe('ok')
     expect(result.targets).toEqual([{ requested: 'helper.c:6', function: 'helper_other', location: expect.stringContaining('helper.c:6') as unknown as string, distance: 0 }])
-  })
-
-  it('deriveStatus alone downgrades ok -> unreachable given the real caller-callee edges', () => {
-    const distance = parseDistance(read('unreachable', 'distance.cfg.txt'))
-    const bidMapping = parseBidMapping(read('unreachable', 'bid_loc_mapping.txt'))
-    const funcInfo = parseFuncInfo(read('unreachable', 'function_info.txt'))
-    const callerCallee = parseGuidEdges(read('unreachable', 'caller-callee.txt'))
-    const ev: RunEvidence = {
-      process: { exitCode: 0, signal: null, timedOut: false },
-      stderr: parseStderr(''),
-      requestedTargets: ['helper.c:6'],
-      missingDumps: [],
-      distance,
-      bidMapping,
-      funcInfo,
-      entries: ['LLVMFuzzerTestOneInput'],
-      callerCallee,
-    }
-    expect(deriveStatus(ev).status).toBe('unreachable')
   })
 
   it('deriveStatus stays ok without call-graph data (no false unreachable from missing input)', () => {

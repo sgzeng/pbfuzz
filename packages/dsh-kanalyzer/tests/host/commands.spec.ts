@@ -11,7 +11,7 @@
  * settings `Config` and `KanalyzerRuntime`, is the genuine implementation.
  */
 import { Context } from '@deepseek-ai/cordis'
-import type { CommandDefinition, CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
+import type { CommandDefinition, CommandInvocation } from '@deepseek-ai/dsh-commands'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -32,8 +32,7 @@ function invocation(rawInput: string): CommandInvocation {
  * `followup()` is documented to become "the sole ordinary message of its own turn" — which is what
  * once made a typed `/kanalyzer analyze …` run the whole analysis twice and answer twice.
  */
-function handoff(rawInput: string): { inv: CommandInvocation; prompts: string[]; steered: string[]; followedUp: string[] } {
-  const prompts: string[] = []
+function handoff(rawInput: string): { inv: CommandInvocation; steered: string[]; followedUp: string[] } {
   const steered: string[] = []
   const followedUp: string[] = []
   const textOf = (message: { content: { type: string; text?: string }[] }): string =>
@@ -41,19 +40,37 @@ function handoff(rawInput: string): { inv: CommandInvocation; prompts: string[];
   const inv = {
     rawInput,
     agent: {
-      steer: (message: { content: { type: string; text?: string }[] }) => {
-        const text = textOf(message)
-        prompts.push(text)
-        steered.push(text)
-      },
-      followup: async (message: { content: { type: string; text?: string }[] }) => {
-        const text = textOf(message)
-        prompts.push(text)
-        followedUp.push(text)
-      },
+      steer: (message: { content: { type: string; text?: string }[] }) => { steered.push(textOf(message)) },
+      followup: async (message: { content: { type: string; text?: string }[] }) => { followedUp.push(textOf(message)) },
     },
   } as unknown as CommandInvocation
-  return { inv, prompts, steered, followedUp }
+  return { inv, steered, followedUp }
+}
+
+/**
+ * Register `/kanalyzer` against a real `KanalyzerRuntime` whose KAMain was never built, so
+ * `doctor`/`analyze` fail before any subprocess runs and every handoff happens before any
+ * analysis could. Only the command-registry boundary (`ctx.commands.register`) is faked.
+ * @param tmp - scratch directory holding the (empty) install dir.
+ * @param patch - settings to override on top of the defaults.
+ * @returns the registered handler.
+ */
+function command(tmp: string, patch: Partial<Config> = {}): CommandDefinition['handler'] {
+  const base = Config()
+  const cfg = { ...base, install: { ...base.install, installDir: join(tmp, 'empty-install') }, ...patch }
+  const runtime = new KanalyzerRuntime(new Context(), { config: () => cfg, writeStatus: async () => {}, packageRoot: tmp })
+  const registered = new Map<string, CommandDefinition>()
+  const fakeCtx = {
+    commands: { register: (def: CommandDefinition) => { registered.set(def.name, def); return () => {} } },
+    kanalyzer: runtime,
+    // registerCommands() also installs an `agent/inbox/inserted` listener; these tests never
+    // emit that event, so a no-op stub is enough.
+    on: () => () => {},
+  } as unknown as Context
+  registerCommands(fakeCtx, () => cfg, tmp)
+  const def = registered.get('kanalyzer')
+  if (def === undefined) throw new Error('/kanalyzer was not registered')
+  return def.handler
 }
 
 describe('/kanalyzer command (src/host/commands.ts)', () => {
@@ -68,112 +85,77 @@ describe('/kanalyzer command (src/host/commands.ts)', () => {
   })
 
   it('doctor: reports a real error, not a crash, when KAMain was never built', async () => {
-    const base = Config()
-    const cfg = { ...base, install: { ...base.install, installDir: join(tmp, 'empty-install') } }
-    const runtime = new KanalyzerRuntime(new Context(), {
-      config: () => cfg,
-      writeStatus: async () => {},
-      packageRoot: tmp,
-    })
-
-    const registered = new Map<string, CommandDefinition>()
-    const fakeCtx = {
-      commands: { register: (def: CommandDefinition) => { registered.set(def.name, def); return () => {} } },
-      kanalyzer: runtime,
-      // registerCommands() also installs an `agent/inbox/inserted` listener; these tests never
-      // emit that event, so a no-op stub is enough.
-      on: () => () => {},
-    } as unknown as Context
-    registerCommands(fakeCtx, () => cfg, tmp)
-
-    const kanalyzer = registered.get('kanalyzer')
-    expect(kanalyzer).toBeDefined()
-    const result = await kanalyzer?.handler(invocation('doctor'))
-    expect(result?.kind).toBe('error')
-    expect(result?.text).toMatch(/KAMain not found/)
-    expect(result?.text).toMatch(/^kanalyzer doctor: fail/)
+    const result = await command(tmp)(invocation('doctor'))
+    expect(result.kind).toBe('error')
+    expect(result.text).toMatch(/KAMain not found/)
+    expect(result.text).toMatch(/^kanalyzer doctor: fail/)
   })
 
   it('analyze: reports a real error, not a crash, when KAMain was never built', async () => {
-    const base = Config()
-    const cfg = {
-      ...base,
-      install: { ...base.install, installDir: join(tmp, 'empty-install') },
-      standalone: { inputFilenames: [join(tmp, 'whatever.0.0.preopt.bc')], targetList: ['a.c:1'], entryList: [] },
-    }
-    const runtime = new KanalyzerRuntime(new Context(), {
-      config: () => cfg,
-      writeStatus: async () => {},
-      packageRoot: tmp,
-    })
-
-    const registered = new Map<string, CommandDefinition>()
-    const fakeCtx = {
-      commands: { register: (def: CommandDefinition) => { registered.set(def.name, def); return () => {} } },
-      kanalyzer: runtime,
-      // registerCommands() also installs an `agent/inbox/inserted` listener; these tests never
-      // emit that event, so a no-op stub is enough.
-      on: () => () => {},
-    } as unknown as Context
-    registerCommands(fakeCtx, () => cfg, tmp)
-
-    const kanalyzer = registered.get('kanalyzer')
-    const result = await kanalyzer?.handler(invocation('analyze'))
-    expect(result?.kind).toBe('error')
-    const parsed = JSON.parse(result?.text ?? '[]') as { status: string; reason?: string }[]
+    const standalone = { inputFilenames: [join(tmp, 'whatever.0.0.preopt.bc')], targetList: ['a.c:1'], entryList: [] }
+    const result = await command(tmp, { standalone })(invocation('analyze'))
+    expect(result.kind).toBe('error')
+    const parsed = JSON.parse(result.text ?? '[]') as { status: string; reason?: string }[]
     expect(parsed).toHaveLength(1)
     expect(parsed[0]?.status).toBe('error')
     expect(parsed[0]?.reason).toMatch(/KAMain is not built/)
   })
 
   it('analyze: guidance error when neither inline targets nor standalone inputFilenames are given', async () => {
-    const base = Config()
-    const cfg = { ...base, install: { ...base.install, installDir: join(tmp, 'empty-install') } }
-    const runtime = new KanalyzerRuntime(new Context(), {
-      config: () => cfg,
-      writeStatus: async () => {},
-      packageRoot: tmp,
-    })
-
-    const registered = new Map<string, CommandDefinition>()
-    const fakeCtx = {
-      commands: { register: (def: CommandDefinition) => { registered.set(def.name, def); return () => {} } },
-      kanalyzer: runtime,
-      // registerCommands() also installs an `agent/inbox/inserted` listener; these tests never
-      // emit that event, so a no-op stub is enough.
-      on: () => () => {},
-    } as unknown as Context
-    registerCommands(fakeCtx, () => cfg, tmp)
-
-    const kanalyzer = registered.get('kanalyzer')
-    const result = await kanalyzer?.handler(invocation('analyze'))
-    expect(result?.kind).toBe('error')
-    expect(result?.text).toMatch(/kanalyzer\.standalone\.inputFilenames is empty/)
-    expect(result?.text).toMatch(/\/kanalyzer analyze src\/foo\.c:96/)
+    const result = await command(tmp)(invocation('analyze'))
+    expect(result.kind).toBe('error')
+    expect(result.text).toMatch(/kanalyzer\.standalone\.inputFilenames is empty/)
+    expect(result.text).toMatch(/\/kanalyzer analyze src\/foo\.c:96/)
   })
 
   it('no arguments: the usage text, not a handoff', async () => {
-    const base = Config()
-    const cfg = { ...base, install: { ...base.install, installDir: join(tmp, 'empty-install') } }
-    const runtime = new KanalyzerRuntime(new Context(), {
-      config: () => cfg,
-      writeStatus: async () => {},
-      packageRoot: tmp,
-    })
-    const registered = new Map<string, CommandDefinition>()
-    const fakeCtx = {
-      commands: { register: (def: CommandDefinition) => { registered.set(def.name, def); return () => {} } },
-      kanalyzer: runtime,
-      // registerCommands() also installs an `agent/inbox/inserted` listener; these tests never
-      // emit that event, so a no-op stub is enough.
-      on: () => () => {},
-    } as unknown as Context
-    registerCommands(fakeCtx, () => cfg, tmp)
-    const { inv, prompts } = handoff('')
-    const result = await registered.get('kanalyzer')?.handler(inv)
-    expect(result?.kind).toBe('error')
-    expect(result?.text).toMatch(/^Usage:/)
-    expect(prompts).toEqual([])
+    const { inv, steered, followedUp } = handoff('')
+    const result = await command(tmp)(inv)
+    expect(result.kind).toBe('error')
+    expect(result.text).toMatch(/^Usage:/)
+    expect([...steered, ...followedUp]).toEqual([])
+  })
+
+  // The duplicate-turn regression. A real session (turn 1 = 46s of real work, turn 2 = 9s re-running
+  // a cache-hit analysis and answering a second time) traced to `handOff()` using `followup()`:
+  // `@deepseek-ai/dsh-agent` documents it as "the item becomes the sole ordinary message of its own
+  // turn", so when the command is dispatched from a typed `/kanalyzer …` chat message — whose raw
+  // text is already driving turn 1 — the structured prompt is forced into a turn of its own and the
+  // agent redoes everything. `steer()` ("steering for the nearest step; an idle driver starts a
+  // turn") joins the turn already starting instead.
+  it.each([
+    ['an inline file:line target', 'analyze readelf.cpp:96'],
+    // The exact input from the recorded session trajectory, which used to come back as
+    // "Usage: /kanalyzer build | doctor | analyze".
+    ['a natural-phrasing request naming one file and one line', 'analyze readelf.cpp. Target line number is 96.'],
+  ])('analyze with %s: steers the agent with the targets, never follows up', async (_what, raw) => {
+    const { inv, steered, followedUp } = handoff(raw)
+    const result = await command(tmp)(inv)
+    expect(result.kind).toBe('success')
+    expect(steered).toHaveLength(1)
+    expect(followedUp).toEqual([])
+    expect(steered[0]).toContain('readelf.cpp:96')
+    expect(steered[0]).toContain('kanalyzer_analyze')
+    expect(steered[0]).toContain('kanalyzer_prepare')
+    expect(steered[0]).toContain(raw)
+  })
+
+  it('a plain-language request without the analyze subcommand is handed over too, by steering', async () => {
+    const { inv, steered, followedUp } = handoff('is line 96 of readelf.cpp reachable?')
+    const result = await command(tmp)(inv)
+    expect(result.kind).toBe('success')
+    expect(result.text).not.toMatch(/Usage/)
+    expect(steered).toHaveLength(1)
+    expect(followedUp).toEqual([])
+    expect(steered[0]).toContain('is line 96 of readelf.cpp reachable?')
+  })
+
+  it('build still follows up — it starts its own unrelated procedure, not this turn\'s work', async () => {
+    const { inv, steered, followedUp } = handoff('build')
+    await command(tmp)(inv)
+    expect(followedUp).toHaveLength(1)
+    expect(steered).toEqual([])
+    expect(followedUp[0]).toContain('kanalyzer-build')
   })
 })
 
@@ -214,69 +196,6 @@ describe('kanalyzerCommandLine()', () => {
     expect(kanalyzerCommandLine('not a command')).toBeUndefined()
     expect(kanalyzerCommandLine('/kanalyzers build')).toBeUndefined()
     expect(kanalyzerCommandLine('please run /kanalyzer build')).toBeUndefined()
-  })
-})
-
-describe('/kanalyzer analyze with a real request (the trajectory\'s first input)', () => {
-  let tmp: string
-
-  beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), 'kanalyzer-commands-handoff-'))
-  })
-
-  afterEach(() => {
-    rmSync(tmp, { recursive: true, force: true })
-  })
-
-  /** Register the command against a runtime whose KAMain is missing — every handoff must happen before any analyse call. */
-  function command(): { handler: (inv: CommandInvocation) => Promise<CommandResult> } {
-    const base = Config()
-    const cfg = { ...base, install: { ...base.install, installDir: join(tmp, 'empty-install') } }
-    const runtime = new KanalyzerRuntime(new Context(), {
-      config: () => cfg,
-      writeStatus: async () => {},
-      packageRoot: tmp,
-    })
-    const registered = new Map<string, CommandDefinition>()
-    const fakeCtx = {
-      commands: { register: (def: CommandDefinition) => { registered.set(def.name, def); return () => {} } },
-      kanalyzer: runtime,
-      // registerCommands() also installs an `agent/inbox/inserted` listener; these tests never
-      // emit that event, so a no-op stub is enough.
-      on: () => () => {},
-    } as unknown as Context
-    registerCommands(fakeCtx, () => cfg, tmp)
-    return registered.get('kanalyzer') as { handler: (inv: CommandInvocation) => Promise<CommandResult> }
-  }
-
-  it('analyze <file:line>: hands the targets to the agent as a kanalyzer workflow prompt', async () => {
-    const { inv, prompts } = handoff('analyze readelf.cpp:96')
-    const result = await command().handler(inv)
-    expect(result.kind).toBe('success')
-    expect(prompts).toHaveLength(1)
-    expect(prompts[0]).toContain('readelf.cpp:96')
-    expect(prompts[0]).toContain('kanalyzer_analyze')
-    expect(prompts[0]).toContain('kanalyzer_prepare')
-    // The doctor is a debugging tool, not a session-opening step: it costs a full sample build.
-    expect(prompts[0]).toContain('Do not run kanalyzer_doctor first')
-  })
-
-  it('analyze <prose>: hands the sentence over instead of rejecting it with a usage error', async () => {
-    // The exact input from the recorded session trajectory, which used to come back as
-    // "Usage: /kanalyzer build | doctor | analyze".
-    const { inv, prompts } = handoff('analyze readelf.cpp. Target line number is 96.')
-    const result = await command().handler(inv)
-    expect(result.kind).toBe('success')
-    expect(prompts[0]).toContain('readelf.cpp. Target line number is 96.')
-    expect(prompts[0]).toContain('kanalyzer')
-  })
-
-  it('a plain-language request without the analyze subcommand is handed over too', async () => {
-    const { inv, prompts } = handoff('is line 96 of readelf.cpp reachable?')
-    const result = await command().handler(inv)
-    expect(result.kind).toBe('success')
-    expect(prompts[0]).toContain('is line 96 of readelf.cpp reachable?')
-    expect(result.text).not.toMatch(/Usage/)
   })
 })
 
@@ -333,67 +252,5 @@ describe('agent/inbox/inserted listener (headless slash-command dispatch workaro
     fire(userMessage('user', 'hello there'))
     await Promise.resolve()
     expect(executed).toEqual([])
-  })
-})
-
-/**
- * The duplicate-turn regression. A real session (turn 1 = 46s of real work, turn 2 = 9s re-running
- * a cache-hit analysis and answering a second time) traced to `handOff()` using `followup()`:
- * `@deepseek-ai/dsh-agent` documents it as "the item becomes the sole ordinary message of its own
- * turn", so when the command is dispatched from a typed `/kanalyzer …` chat message — whose raw
- * text is already driving turn 1 — the structured prompt is forced into a turn of its own and the
- * agent redoes everything. `steer()` ("steering for the nearest step; an idle driver starts a
- * turn") joins the turn already starting instead.
- */
-describe('handoff channel: steer for analysis, followup only for build', () => {
-  let tmp: string
-  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'kanalyzer-channel-')) })
-  afterEach(() => { rmSync(tmp, { recursive: true, force: true }) })
-
-  /** Same shape as the handoff suite above: a runtime whose KAMain is missing, so every branch
-   * under test hands off before it could reach a real analysis. */
-  function command(): { handler: (inv: CommandInvocation) => Promise<CommandResult> } {
-    const base = Config()
-    const cfg = { ...base, install: { ...base.install, installDir: join(tmp, 'empty-install') } }
-    const runtime = new KanalyzerRuntime(new Context(), { config: () => cfg, writeStatus: async () => {}, packageRoot: tmp })
-    const registered = new Map<string, CommandDefinition>()
-    const fakeCtx = {
-      commands: { register: (def: CommandDefinition) => { registered.set(def.name, def); return () => {} } },
-      kanalyzer: runtime,
-      on: () => () => {},
-    } as unknown as Context
-    registerCommands(fakeCtx, () => cfg, tmp)
-    return registered.get('kanalyzer') as { handler: (inv: CommandInvocation) => Promise<CommandResult> }
-  }
-
-  it('an inline-target analyze steers, never follows up', async () => {
-    const { inv, steered, followedUp } = handoff('analyze readelf.cpp:96')
-    await command().handler(inv)
-    expect(steered).toHaveLength(1)
-    expect(followedUp).toEqual([])
-    expect(steered[0]).toContain('readelf.cpp:96')
-  })
-
-  it('a plain-language request steers, never follows up', async () => {
-    const { inv, steered, followedUp } = handoff('is line 96 of readelf.cpp reachable?')
-    await command().handler(inv)
-    expect(steered).toHaveLength(1)
-    expect(followedUp).toEqual([])
-  })
-
-  it('build still follows up — it starts its own unrelated procedure, not this turn\'s work', async () => {
-    const { inv, steered, followedUp } = handoff('build')
-    await command().handler(inv)
-    expect(followedUp).toHaveLength(1)
-    expect(steered).toEqual([])
-    expect(followedUp[0]).toContain('kanalyzer-build')
-  })
-
-  it('the analysis prompts tell the agent not to redo work already done this turn', async () => {
-    for (const raw of ['analyze readelf.cpp:96', 'is line 96 of readelf.cpp reachable?']) {
-      const { inv, steered } = handoff(raw)
-      await command().handler(inv)
-      expect(steered[0]).toMatch(/already .*(done|answered).*current turn/i)
-    }
   })
 })

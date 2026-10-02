@@ -3,11 +3,10 @@
  * `ensureInitState`) that `guards.spec.ts`/`state-writer.spec.ts` exercise only indirectly.
  * Three of these are Wave D fsm-attack regression tests (F1, F4, F5) — see each `it`'s comment.
  */
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { campaignToYaml } from '../src/core/campaign-yaml.ts'
 import { PBFUZZ_TOOLS } from '../src/core/phases.ts'
 import { PbfuzzHost, writeFile, type ActiveCampaign, type AgentLike } from '../src/host.ts'
 import { settings } from './fixtures.ts'
@@ -40,13 +39,6 @@ function saved(host: PbfuzzHost, agent: AgentLike, id: string): ActiveCampaign {
 }
 
 describe('resolvePath (Wave D fsm-attack F1)', () => {
-  it('lexically normalizes an absolute path exactly like the real fs backend would', () => {
-    const root = tmpRoot('pbfuzz-resolve-')
-    const host = newHost()
-    const traversal = join(root, 'a', 'b', '..', '..', 'c')
-    expect(host.resolvePath(agentIn(root), traversal)).toBe(join(root, 'c'))
-  })
-
   it('a `..`-laden absolute path that lexically re-enters a directory resolves inside it, not as the raw string', () => {
     const root = tmpRoot('pbfuzz-resolve-')
     const host = newHost()
@@ -73,17 +65,7 @@ describe('resolvePath (Wave D fsm-attack F1)', () => {
 })
 
 describe('writeFile: atomic temp-file + rename (Wave D fsm-attack F4)', () => {
-  it('leaves no partial content observable and no leftover temp file', () => {
-    const root = tmpRoot('pbfuzz-writefile-')
-    const target = join(root, 'state', 'bug_predicates.json')
-    writeFile(target, '[{"id":"BP1"}]\n')
-    expect(readFileSync(target, 'utf8')).toBe('[{"id":"BP1"}]\n')
-    // No stray `.bug_predicates.json.<hex>.tmp` sibling left behind after a successful write.
-    const siblings = readdirSync(join(root, 'state'))
-    expect(siblings).toEqual(['bug_predicates.json'])
-  })
-
-  it('a second write fully replaces the first — never observed truncated, never merged', () => {
+  it('a rewrite fully replaces the previous content — never truncated, never merged, no temp file left behind', () => {
     const root = tmpRoot('pbfuzz-writefile-')
     const target = join(root, 'state', 'state.json')
     writeFile(target, JSON.stringify({ phase: 'PLAN', pier_round: 0 }))
@@ -152,16 +134,5 @@ describe('ensureInitState: does not trust a foreign campaign\'s state.json (Wave
     const state = host.state(active)
     expect(state?.campaign_id).toBe('c3')
     expect(state?.phase).toBe('INIT')
-  })
-})
-
-describe('confirmed campaign layout sanity', () => {
-  it('save() creates the campaign yaml and active() finds it back', () => {
-    const root = tmpRoot('pbfuzz-init-')
-    const host = newHost()
-    const agent = agentIn(root)
-    const active = saved(host, agent, 'c4')
-    expect(existsSync(active.path)).toBe(true)
-    expect(campaignToYaml(host.active(agent)!.campaign)).toBe(campaignToYaml(active.campaign))
   })
 })

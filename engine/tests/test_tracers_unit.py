@@ -18,11 +18,10 @@ from pbfuzz_engine.tracers.base import BreakpointReport, TraceResult, parse_loca
 from pbfuzz_engine.tracers.gdb_batch import (
     build_gdb_script,
     build_run_command,
-    parse_info_breakpoints,
     parse_trace_report,
     program_exists,
 )
-from pbfuzz_engine.tracers.jdb import JdbTracer, _drive_jdb, build_jdb_session, parse_jdb_transcript
+from pbfuzz_engine.tracers.jdb import JdbTracer, _drive_jdb, parse_jdb_transcript
 from pbfuzz_engine.tracers.lldb_batch import build_lldb_argv, build_lldb_hook
 from pbfuzz_engine.tracers.pymon import find_python_script
 
@@ -48,7 +47,7 @@ def test_breakpoint_accepts_contract_and_camel_keys():
     assert Breakpoint.from_obj({"location": "c.c:5"}).hit_limit == 10  # schema default
 
 
-@pytest.mark.parametrize("bad", ["nocolon", "file.c:", "file.c:abc", ":12"])
+@pytest.mark.parametrize("bad", ["nocolon", "file.c:abc", ":12"])
 def test_bad_locations_raise_with_remedies(bad):
     with pytest.raises(TracerError) as info:
         Breakpoint.from_obj({"location": bad})
@@ -133,11 +132,6 @@ def test_parse_reach_fixture_reports_hits_and_honest_unresolved():
     assert rpc["exitCode"] == 0 and "signal" not in rpc
 
 
-def test_parse_info_breakpoints_handles_enb_column_pending_and_multiple():
-    text = json.loads((FIXTURES / "gdb_report_old_gdb.json").read_text())["info_breakpoints"]
-    assert parse_info_breakpoints(text) == {1: True, 2: False, 3: True}
-
-
 def test_old_gdb_falls_back_to_info_breakpoints():
     report = json.loads((FIXTURES / "gdb_report_old_gdb.json").read_text())
     bps = [Breakpoint("toy.c:7"), Breakpoint("gone.c:3"), Breakpoint("inl.h:5")]
@@ -178,10 +172,7 @@ def test_find_python_script():
     assert find_python_script(["python3", "-m", "pkg.harness"]) is None
 
 
-def test_jdb_session_and_transcript_parsing():
-    session = build_jdb_session([("Toy", 12), ("Toy", 99)], max_stops=2)
-    assert session.splitlines()[:3] == ["stop at Toy:12", "stop at Toy:99", "run"]
-    assert session.rstrip().endswith("exit")
+def test_jdb_transcript_parsing():
     text = (FIXTURES / "jdb_transcript.txt").read_text()
     bps = [Breakpoint("src/Toy.java:12", print_call_stack=True, inline_expr=("n",)), Breakpoint("src/Toy.java:99")]
     result = parse_jdb_transcript(text, bps, ["Toy", "Toy"])

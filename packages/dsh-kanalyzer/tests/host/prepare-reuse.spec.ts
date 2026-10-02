@@ -9,7 +9,7 @@
  * @module @pbfuzz/dsh-kanalyzer/tests/host/prepare-reuse
  */
 import { Context } from '@deepseek-ai/cordis'
-import { existsSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { KANALYZER_DIR } from '../../src/core/isolation.ts'
@@ -51,47 +51,38 @@ describe('prepare(): reuse by source freshness', () => {
 
   const request = () => ({ repo: ws.repo, buildCmd: 'bash build.sh', mode: 'wllvm' as const, program: 'app' })
 
-  it('reuses the previous bitcode when nothing in the checkout changed', async () => {
+  it('reuses the previous bitcode when nothing in the checkout changed, even from a fresh runtime', async () => {
     const first = await runtime.prepare(request())
     expect(first.cached).toBe(false)
     expect(builds(calls)).toBe(1)
 
-    const second = await runtime.prepare(request())
-    expect(second.cached).toBe(true)
-    expect(second.bitcode).toBe(first.bitcode)
-    expect(builds(calls)).toBe(1)
-    // The memo survives a fresh runtime, because it is written into the checkout.
-    expect(existsSync(join(ws.repo, KANALYZER_DIR, 'prepare.json'))).toBe(true)
-  })
-
-  it('is remembered across runtime instances, not just within one session', async () => {
-    await runtime.prepare(request())
+    // The memo is written into the checkout, so a new session (a new runtime) still finds it.
     const fresh = new KanalyzerRuntime(new Context(), {
       config: () => config(ws.installDir, ws.llvmPrefix), writeStatus: async () => {}, packageRoot: ws.tmp,
     })
-    expect((await fresh.prepare(request())).cached).toBe(true)
+    const second = await fresh.prepare(request())
+    expect(second.cached).toBe(true)
+    expect(second.bitcode).toBe(first.bitcode)
     expect(builds(calls)).toBe(1)
   })
 
-  it('rebuilds after a source edit', async () => {
+  // A source file and a build-system file are different branches of the freshness walk.
+  it.each([
+    ['a source edit', 'src/main.c'],
+    ['a build-system edit, not only a source edit', 'Makefile'],
+  ])('rebuilds after %s', async (_label, file) => {
     await runtime.prepare(request())
-    touch(join(ws.repo, 'src', 'main.c'))
+    writeFileSync(join(ws.repo, file), 'edited\n')
+    touch(join(ws.repo, file))
     expect((await runtime.prepare(request())).cached).toBe(false)
     expect(builds(calls)).toBe(2)
   })
 
-  it('rebuilds after a build-system edit, not only a source edit', async () => {
-    await runtime.prepare(request())
-    writeFileSync(join(ws.repo, 'Makefile'), 'all:\n\t@true\n')
-    touch(join(ws.repo, 'Makefile'))
-    expect((await runtime.prepare(request())).cached).toBe(false)
-  })
-
   it('is never invalidated by its own build output inside the isolated tree', async () => {
     await runtime.prepare(request())
-    // The copy's link output is newer than the memo by construction; if the freshness walk saw it,
-    // every prepare would rebuild for ever.
-    touch(join(ws.repo, KANALYZER_DIR, 'tree', 'app'))
+    // A file in the copy that looks newly edited (a generated source, say); if the freshness walk
+    // descended into the copy, every prepare would rebuild for ever.
+    touch(join(ws.repo, KANALYZER_DIR, 'tree', 'src', 'main.c'))
     expect((await runtime.prepare(request())).cached).toBe(true)
   })
 

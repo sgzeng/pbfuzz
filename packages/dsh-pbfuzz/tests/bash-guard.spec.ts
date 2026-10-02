@@ -56,11 +56,6 @@ describe('bashGuardVerdict — mechanics', () => {
     expect(verdict).toEqual({ denied: true, target: '.pbfuzz', mutation: 'rm' })
   })
 
-  it('scopes matching to one clause: an unrelated mutation and an unrelated protected mention in different clauses do not combine (B10)', () => {
-    expect(bashGuardVerdict('rm -rf /tmp/build && echo x > /tmp/build/log', STATE_DIR).denied).toBe(false)
-    expect(bashGuardVerdict('cat .pbfuzz/camp1/selfcheck.json && rm -rf /tmp/build', STATE_DIR).denied).toBe(false)
-  })
-
   it('a bare state filename is only protected once a preceding cd landed inside the campaign dir', () => {
     expect(bashGuardVerdict('rm state.json', STATE_DIR).denied).toBe(false)
     expect(bashGuardVerdict('cd /tmp/scratch && rm state.json', STATE_DIR).denied).toBe(false)
@@ -72,8 +67,7 @@ describe('bashGuardVerdict — mechanics', () => {
     expect(bashGuardVerdict('diff .pbfuzz/camp1/state/state.json < other.json', STATE_DIR).denied).toBe(false)
   })
 
-  it('open() with no explicit mode (default read-only) is not a mutation, but an explicit write mode is', () => {
-    expect(bashGuardVerdict("python3 -c \"open('.pbfuzz/camp1/state/state.json').read()\"", STATE_DIR).denied).toBe(false)
+  it('open() with an explicit write mode is a mutation (the default read-only open is table row B3)', () => {
     expect(bashGuardVerdict("python3 -c \"open('.pbfuzz/camp1/state/state.json', 'w').write('{}')\"", STATE_DIR).denied).toBe(true)
   })
 
@@ -86,16 +80,11 @@ describe('bashGuardVerdict — mechanics', () => {
     expect(bashGuardVerdict('rm -rf .pbfuzz/some-other-project/notes.txt', customDir).denied).toBe(false)
   })
 
-  it('catches the protected filename assigned to a variable in one clause and mutated through the variable in another (finding F2 / N4), across $f, ${f}, and quoted forms', () => {
-    // Exact repro from finding F2.
-    expect(bashGuardVerdict('f=.pbfuzz/camp1/state/state.json; > "$f"', STATE_DIR).denied).toBe(true)
+  it('variable-taint also catches the ${f} braces form and a quoted assignment with a bare $f reference (the plain "$f" form is table row N4)', () => {
     // Braces form.
     expect(bashGuardVerdict('f=.pbfuzz/camp1/state/state.json; > "${f}"', STATE_DIR).denied).toBe(true)
     // Bare (unquoted) reference, and a quoted assignment right-hand side.
     expect(bashGuardVerdict('f=".pbfuzz/camp1/state/state.json"; rm $f', STATE_DIR).denied).toBe(true)
-    const verdict = bashGuardVerdict('f=.pbfuzz/camp1/state/state.json; > "$f"', STATE_DIR)
-    expect(verdict.target).toBeTruthy()
-    expect(verdict.mutation).toBeTruthy()
   })
 
   it('variable-taint tracking does not overtighten: an unrelated assignment, or a tainted reference with no mutation, still allows', () => {

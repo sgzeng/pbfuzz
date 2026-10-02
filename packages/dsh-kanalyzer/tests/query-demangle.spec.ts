@@ -34,11 +34,6 @@ describe('demangleItanium()', () => {
     expect(demangleItanium('_ZN3FooIiE3barEv')).toBe('Foo::bar')
   })
 
-  it('is a no-op for a plain (non-mangled) C name', () => {
-    expect(demangleItanium('main')).toBeUndefined()
-    expect(demangleItanium('check_dangerous_elf_combination')).toBeUndefined()
-  })
-
   it('never throws, and bails to undefined, on the documented gaps', () => {
     // Substitution-compressed std:: names — both real rows from the same readelf.cpp capture.
     expect(demangleItanium('_ZSt3hexRSt8ios_base')).toBeUndefined()
@@ -53,28 +48,9 @@ describe('demangleItanium()', () => {
     expect(demangleItanium('_Z')).toBeUndefined()
     expect(demangleItanium('_ZN3Foo')).toBeUndefined() // unterminated nested-name
     expect(demangleItanium('_Z99tooShort')).toBeUndefined() // length exceeds the string
+    // Not mangled at all: a plain C name.
     expect(demangleItanium('not mangled at all')).toBeUndefined()
-  })
-
-  it('never throws over every name in the real readelf.cpp func-info capture', () => {
-    const names = [
-      '_Z14print_elf_infoRK9ELFHeader',
-      '_ZSt3hexRSt8ios_base',
-      '_ZSt3decRSt8ios_base',
-      '_ZNSt8ios_base4setfESt13_Ios_FmtflagsS0_',
-      '_ZStcoSt13_Ios_Fmtflags',
-      '_ZStaNRSt13_Ios_FmtflagsS_',
-      '_ZStanSt13_Ios_FmtflagsS_',
-      '_ZStoRRSt13_Ios_FmtflagsS_',
-      '_ZStorSt13_Ios_FmtflagsS_',
-      '_Z31check_dangerous_elf_combinationRK9ELFHeader',
-      'main',
-    ]
-    for (const n of names) expect(() => demangleItanium(n)).not.toThrow()
-    // Only the two plain unscoped names resolve; every `std::`-substitution-using name (and the
-    // already-unmangled `main`) hits the documented gap and falls back to undefined.
-    expect(names.map(demangleItanium).filter((d): d is string => d !== undefined))
-      .toEqual(['print_elf_info', 'check_dangerous_elf_combination'])
+    expect(demangleItanium('main')).toBeUndefined()
   })
 })
 

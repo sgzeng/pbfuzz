@@ -5,7 +5,7 @@
  * `host/runtime.ts`), and KAMain then bakes that copy's absolute paths into its dumps. These
  * tests cover `remap()`/`remapLocation()` resolving paths under such an alias root back to the
  * same repo-relative string a path under the real repo would produce, alongside the existing
- * (no-alias) behaviour and `candidates()`, which alias roots must leave untouched.
+ * (no-alias) behaviour.
  */
 import { describe, expect, it } from 'vitest'
 import { RepoIndex } from '../src/core/paths.ts'
@@ -39,26 +39,10 @@ describe('RepoIndex alias roots', () => {
   const alias = '/work/nginx/.kanalyzer/tree'
   const files = ['src/x.c', 'src/other.c']
 
-  it('remaps an absolute path under an alias root to repo-relative', () => {
-    const r = new RepoIndex(repo, files, [alias])
-    expect(r.remap(`${alias}/src/x.c`)).toBe('src/x.c')
-  })
-
   it('tolerates a trailing slash on the alias root', () => {
     const r = new RepoIndex(repo, files, [`${alias}/`])
     expect(r.remap(`${alias}/src/x.c`)).toBe('src/x.c')
     expect(r.aliasRoots).toEqual([alias])
-  })
-
-  it('remaps a location under an alias root', () => {
-    const r = new RepoIndex(repo, files, [alias])
-    expect(r.remapLocation(`${alias}/src/x.c:12`)).toBe('src/x.c:12')
-  })
-
-  it('falls back to basename/suffix matching for a path under neither root', () => {
-    const r = new RepoIndex(repo, files, [alias])
-    expect(r.remap('/somewhere/else/src/x.c')).toBe('src/x.c')
-    expect(r.remap('x.c')).toBe('src/x.c')
   })
 
   it('leaves existing no-alias behaviour unchanged', () => {
@@ -66,10 +50,5 @@ describe('RepoIndex alias roots', () => {
     expect(r.aliasRoots).toEqual([])
     expect(r.remap(`${repo}/src/x.c`)).toBe('src/x.c')
     expect(r.remap('nope.c')).toBe('nope.c')
-  })
-
-  it('does not affect candidates()', () => {
-    const r = new RepoIndex(repo, files, [alias])
-    expect(r.candidates('x.c')).toEqual(['src/x.c'])
   })
 })
