@@ -3,8 +3,7 @@
 **PBFuzz** (the CCS'26 agentic directed fuzzer) as plugins for
 [DeepSeek Harness (DSH)](https://deepseek-harness.github.io/deepseek-harness/).
 Point the agent at a target repo and a bug (a CVE, a patch, a crash trace, or just `file:line`);
-it runs a directed-fuzzing loop until it produces a **verified Proof-of-Vulnerability** — an input
-confirmed by the target's own oracle, not a hand-written repro.
+it runs a directed-fuzzing loop until it produces a **verified Proof-of-Vulnerability** — input.
 
 ## Quick start
 

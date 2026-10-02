@@ -21,8 +21,11 @@ pnpm install --frozen-lockfile
 pnpm run build
 
 log "Python engine"
-# Rebuild the venv if it was made with an interpreter that is too old (or is gone).
-engine/.venv/bin/python -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null || rm -rf engine/.venv
+# The venv must be built from the interpreter chosen above (the local pyenv one when the system
+# Python was too old). Rebuild it if it was made from a different or older Python.
+want=$("$PY" -c 'import sys; print(sys.base_prefix)')
+have=$(engine/.venv/bin/python -c 'import sys; print(sys.base_prefix)' 2>/dev/null || true)
+[ "$want" = "$have" ] || rm -rf engine/.venv
 [ -d engine/.venv ] || "$PY" -m venv engine/.venv || die "venv failed (sudo apt install python3-venv)"
 engine/.venv/bin/pip install -q -e engine
 

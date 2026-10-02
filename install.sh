@@ -34,6 +34,27 @@ add() { echo "==> dsh plugin add $1"; "${DSH[@]}" plugin --profile "$PROFILE" ad
 add pbfuzz-dsh-pbfuzz
 [ "$WITH_KANALYZER" = 0 ] || add pbfuzz-dsh-kanalyzer
 
+# The plugin spawns the engine with `execution.pythonPath` (default: system python3, which has no
+# engine). Point it at the venv built by build.sh — i.e. the Python that build.sh selected, the
+# local pyenv 3.11 when the system one was too old. Only that one key is changed; a backup is kept.
+VENV_PY=$PWD/engine/.venv/bin/python
+"$VENV_PY" -c 'import sys,yaml; sys.exit(sys.version_info < (3, 11))' \
+  || { echo "error: engine venv is missing or not Python >= 3.11 with PyYAML; rerun ./build.sh" >&2; exit 1; }
+SETTINGS=${DSH_HOME:-$HOME/.dsh}/settings.yaml
+mkdir -p "$(dirname "$SETTINGS")"
+[ ! -f "$SETTINGS" ] || cp -p "$SETTINGS" "$SETTINGS.pbfuzz-bak"
+"$VENV_PY" - "$SETTINGS" "$VENV_PY" <<'PY'
+import sys, yaml
+path, py = sys.argv[1:]
+try:
+    with open(path) as f: doc = yaml.safe_load(f) or {}
+except FileNotFoundError:
+    doc = {}
+doc.setdefault("pbfuzz", {}).setdefault("execution", {})["pythonPath"] = py
+with open(path, "w") as f: yaml.safe_dump(doc, f, default_flow_style=False, sort_keys=False)
+PY
+echo "==> pbfuzz.execution.pythonPath = $VENV_PY"
+
 cat <<MSG
 
 Installed into DSH profile '$PROFILE'. Start (or restart) the server:
