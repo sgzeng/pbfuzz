@@ -7,11 +7,9 @@ it runs a directed-fuzzing loop until it produces a **verified Proof-of-Vulnerab
 
 ## Quick start
 
-Ubuntu 22.04/24.04 x86-64, Node.js ≥ 22, Python ≥ 3.11 on `PATH` (the plugin picks the first of
-`python3`, `python3.15` … `python3.11` that is new enough, so Ubuntu 22.04's default 3.10 is fine
-next to an installed `python3.11`/`python3.12`; or set **Settings → pbfuzz → Python interpreter**).
+Ubuntu 22.04/24.04 x86-64, Node.js ≥ 22, Python ≥ 3.11
 
-**1. Set up DeepSeek Harness** (skip if you already have it) — follow the
+**1. Set up DeepSeek Harness** — follow the
 [official docs](https://deepseek-harness.github.io/deepseek-harness/) to install DSH and configure
 your DeepSeek API key. Use the DSH version these plugins are verified against (`DSH_VERSION` in
 [`HARNESS_COMMIT`](HARNESS_COMMIT)); npm's `latest` can be outside their peer range.
