@@ -4,6 +4,25 @@
   "description": "General-purpose LLVM static-analysis plugin for DeepSeek Harness: builds analysable bitcode and runs kernel-analyzer (KAMain) reachability analysis behind ctx.kanalyzer",
   "type": "module",
   "license": "PolyForm-Noncommercial-1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sgzeng/pbfuzz.git",
+    "directory": "packages/dsh-kanalyzer"
+  },
+  "homepage": "https://github.com/sgzeng/pbfuzz/tree/master/packages/dsh-kanalyzer",
+  "bugs": {
+    "url": "https://github.com/sgzeng/pbfuzz/issues"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "llvm",
+    "static-analysis",
+    "reachability"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {
@@ -24,7 +43,8 @@
     "lib/types/**/*.d.ts",
     "cordis.patch.yml",
     "skills/**/*.md",
-    "selftest/**"
+    "selftest/**",
+    "LICENSE"
   ],
   "dsh": {
     "bundle": {
@@ -49,7 +69,9 @@
     "typecheck:core": "tsc -p tsconfig.core.json",
     "typecheck:client": "tsc -p src/client/tsconfig.json",
     "build:client": "node scripts/build-client.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepack": "node ../../scripts/copy-license.mjs",
+    "postpack": "node -e \"require('node:fs').rmSync('LICENSE',{force:true})\""
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.4 <5.0.0",

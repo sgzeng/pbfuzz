@@ -36,7 +36,7 @@ inside the newest DSH?**
 
 - `global-setup.ts` installs `@deepseek-ai/dsh` at npm's `latest` (never the lockfile's version; cached under
   `.dsh-real/`, keyed by version), builds and packs both plugins, and runs the real `dsh plugin add` into a scratch
-  profile. DSH's own peer-range admission happens there, so a latest DSH outside the plugins' declared range fails
+  profile (the packed plugin carries its engine, so the run uses that copy, not the repo's). DSH's own peer-range admission happens there, so a latest DSH outside the plugins' declared range fails
   the run with `would not install ... run node scripts/bump-dsh.mjs <version>`.
 - `harness.ts` boots that profile in-process with the same `runProfile()` the `dsh` binary calls. Each spec gets
   its own copy of the DSH home (and `HOME`), so nothing touches the machine's real `~/.dsh`.
@@ -54,7 +54,7 @@ inside the newest DSH?**
 | `pier.spec.ts` | a whole round: campaign draft and approval, PLAN, a fuzz session as a DSH job by the real engine, the job's notice waking the agent, REFLECT, SUCCESS |
 | `kanalyzer.spec.ts` | kanalyzer's tool and command through DSH's runtimes |
 
-Run it: `pnpm run test:dsh` (needs the network and Python with the engine installed: `pip install -e engine`).
+Run it: `pnpm run test:dsh` (needs the network and a `python3` >= 3.11; the plugin ships its own engine, so nothing is pip-installed, exactly as for a user).
 `PBFUZZ_DSH_VERSION=<version or dist-tag>` reproduces a failure on another release; `PBFUZZ_DSH_DIR` moves the
 install; `PBFUZZ_SKIP_BUILD=1` skips the plugin build when you have just built.
 

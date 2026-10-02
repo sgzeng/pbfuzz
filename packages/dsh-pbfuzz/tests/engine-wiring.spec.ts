@@ -81,6 +81,21 @@ describe('engine sidecar environment', () => {
     expect(engineEnv(pkgRoot, { PYTHONPATH: '/x' }).PYTHONPATH).toBe(`${join(repo, 'engine')}:/x`)
     expect(engineEnv('/nonexistent/pkg', {})).toEqual({})
   })
+
+  it('uses the engine shipped inside an installed npm package (no source checkout around it)', () => {
+    const root = mkdtempSync(join(tmpdir(), 'pbfuzz-installed-'))
+    const installed = join(root, 'node_modules', '@pbfuzz', 'dsh-pbfuzz')
+    mkdirSync(join(installed, 'engine', 'pbfuzz_engine'), { recursive: true })
+    writeFileSync(join(installed, 'engine', 'pbfuzz_engine', 'rpc.py'), '')
+    expect(engineEnv(installed, {})).toEqual({ PYTHONPATH: join(installed, 'engine') })
+  })
+
+  it('lets $PBFUZZ_ENGINE_DIR win over both', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pbfuzz-enginedir-'))
+    mkdirSync(join(dir, 'pbfuzz_engine'), { recursive: true })
+    writeFileSync(join(dir, 'pbfuzz_engine', 'rpc.py'), '')
+    expect(engineEnv(pkgRoot, { PBFUZZ_ENGINE_DIR: dir })).toEqual({ PYTHONPATH: dir })
+  })
 })
 
 describe('engine errors reach the user as remedies, not a bare message', () => {

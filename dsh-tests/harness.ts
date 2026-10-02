@@ -26,8 +26,6 @@ export interface RealDsh {
   readonly home: string
   /** Absolute path of the booted profile directory. */
   readonly profileDir: string
-  /** The interpreter (with `pbfuzz_engine`) the plugin is told to spawn the engine with. */
-  readonly python: string
   /** Import a module from the DSH install under test (resolved from the launcher package). */
   load(specifier: string): Promise<any>
   dispose(): Promise<void>
@@ -54,12 +52,9 @@ export async function bootRealDsh(): Promise<RealDsh> {
   const { runProfile } = await load('@deepseek-ai/dsh/profile-boot')
 
   const { ctx, shutdown } = await runProfile({ environment: loadLayeredEnv('dsh'), profile: setup.profile, patchFiles: [], args: [] })
-  // install.sh points `execution.pythonPath` at the interpreter that has the engine; so do we.
-  await ctx.get('settings').update('pbfuzz', { execution: { pythonPath: setup.python } })
   return {
     ctx,
     version: setup.version,
-    python: setup.python,
     home,
     profileDir: join(home, 'profiles', setup.profile),
     load,

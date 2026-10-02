@@ -35,7 +35,7 @@ describe('a PIER round', () => {
       id: 'itest',
       target: { repo: root, language: 'python' },
       bug: { targets: [{ location: 'target.py:5', condition: "b'T' in data" }] },
-      entry: { kind: 'executable', run_cmd: `${dsh.python} ${root}/target.py @@`, input_channel: 'file' },
+      entry: { kind: 'executable', run_cmd: `python3 ${root}/target.py @@`, input_channel: 'file' },
       oracle: { mode: 'preexisting', reached_pattern: 'PBFUZZ_REACHED:\\s*(\\S+)', triggered_pattern: 'PBFUZZ_TRIGGERED:\\s*(\\S+)' },
       tracer: 'off',
       output: { dir: campaignDir },

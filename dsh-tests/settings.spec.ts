@@ -22,11 +22,13 @@ describe('settings', () => {
   })
 
   it('an edit is written to the profile patch and reaches the running plugin', async () => {
-    await dsh.ctx.get('settings').update('pbfuzz', { budget: { maxPierRounds: 2 } })
+    const settings = dsh.ctx.get('settings')
+    await settings.update('pbfuzz', { budget: { maxPierRounds: 2 } })
+    await settings.update('pbfuzz', { budget: { campaignWallTimeMin: 45 } })
 
     const patch = readFileSync(join(dsh.profileDir, 'cordis.patch.yml'), 'utf8')
     expect(patch).toMatch(/maxPierRounds: 2/)
-    expect(patch, 'a merge patch keeps the keys install.sh wrote').toContain(`pythonPath: ${dsh.python}`)
+    expect(patch, 'an edit is a merge patch: the earlier one is still there').toMatch(/campaignWallTimeMin: 45/)
 
     // The plugin re-resolves on `loader/volatile-update`; the campaign dashboard shows the limit it uses.
     const session = await openSession(dsh)

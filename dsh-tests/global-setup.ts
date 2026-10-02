@@ -7,6 +7,10 @@
  * these tests: the plugins are checked against the DSH users will actually install next, not the
  * one the lockfile happens to hold.
  *
+ * The plugins run their own engine: the packed plugin ships it (with a vendored PyYAML) and
+ * `execution.pythonPath` is left at its default, so the only requirement is a `python3` >= 3.11 on
+ * PATH, exactly as for a user.
+ *
  * Environment:
  *   PBFUZZ_DSH_DIR      where the DSH install lives (default: <repo>/.dsh-real; CI caches it)
  *   PBFUZZ_DSH_VERSION  a version or dist-tag to test instead of `latest`
@@ -27,8 +31,6 @@ export interface RealDshSetup {
   /** A DSH home holding the prepared profile; every spec boots a private copy of it. */
   readonly homeTemplate: string
   readonly profile: string
-  /** A Python (>= 3.11) with `pbfuzz_engine` importable, for the plugin's engine subprocess. */
-  readonly python: string
 }
 
 declare module 'vitest' {
@@ -39,17 +41,6 @@ declare module 'vitest' {
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const PROFILE = 'itest'
-
-/** The interpreter the plugin will spawn the engine with; it must already have the engine installed. */
-function enginePython(): string {
-  const venv = join(ROOT, 'engine', '.venv', 'bin', 'python')
-  const python = process.env.PBFUZZ_PYTHON ?? (existsSync(venv) ? venv : 'python3')
-  const probe = spawnSync(python, ['-c', 'import pbfuzz_engine'], { encoding: 'utf8' })
-  if (probe.status !== 0) {
-    throw new Error(`${python} cannot import pbfuzz_engine. Install it first: cd engine && ${python} -m pip install -e '.[dev]' (or set PBFUZZ_PYTHON).\n${probe.stderr}`)
-  }
-  return python
-}
 
 function run(cmd: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): string {
   const result = spawnSync(cmd, args, { encoding: 'utf8', ...options, env: { ...process.env, ...options.env } })
@@ -80,8 +71,6 @@ function installedVersion(dir: string): string | undefined {
 export default function setup(project: TestProject): () => void {
   const dshDir = resolve(process.env.PBFUZZ_DSH_DIR ?? join(ROOT, '.dsh-real'))
   const wanted = process.env.PBFUZZ_DSH_VERSION ?? 'latest'
-
-  const python = enginePython()
 
   // 1. The DSH under test.
   let version: string
@@ -129,6 +118,6 @@ export default function setup(project: TestProject): () => void {
   }
   if (!existsSync(join(home, 'profiles', PROFILE, 'package.json'))) throw new Error('dsh plugin add did not create the profile')
 
-  project.provide('realDsh', { dshPackageDir, version, homeTemplate: home, profile: PROFILE, python })
+  project.provide('realDsh', { dshPackageDir, version, homeTemplate: home, profile: PROFILE })
   return () => { rmSync(scratch, { recursive: true, force: true }) }
 }

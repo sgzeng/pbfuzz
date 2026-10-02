@@ -346,6 +346,7 @@ class BatchedGeneratorSandbox:
             )
         self._proc: subprocess.Popen[bytes] | None = None
         self._buf = b""
+        self._eof = False
         self._next_id = 0
         self._work_dir: str | None = None
 
@@ -462,7 +463,10 @@ class BatchedGeneratorSandbox:
             except (BlockingIOError, InterruptedError):
                 continue
             if not chunk:
-                return None  # EOF: the worker's stdout closed (it died)
+                # EOF: the worker's stdout closed because it died. Remembered, because `poll()` may
+                # still say "running" for a moment: the pipe closes before the child is reapable.
+                self._eof = True
+                return None
             self._buf += chunk
         line, _, self._buf = self._buf.partition(b"\n")
         return line
@@ -521,9 +525,10 @@ class BatchedGeneratorSandbox:
                 continue  # retry the same item against a fresh worker
 
             deadline = time.monotonic() + self.limits.timeout_sec
+            self._eof = False
             line = self._read_response_line(deadline)
             if line is None:
-                crashed = self._proc is not None and self._proc.poll() is not None
+                crashed = self._eof or (self._proc is not None and self._proc.poll() is not None)
                 stderr_tail = self._drain_stderr_tail()
                 self._kill_worker()
                 if crashed:

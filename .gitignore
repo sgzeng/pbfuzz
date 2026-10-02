@@ -9,6 +9,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
+# staged into the dsh-pbfuzz npm package by scripts/stage-engine.mjs (prepack)
+packages/dsh-pbfuzz/engine/
+packages/dsh-pbfuzz/contracts/
 .pbfuzz/
 .DS_Store
 
@@ -17,3 +20,4 @@ AGENTS.md
 CLAUDE.md
 .claude/
 .local/
+packages/*/LICENSE

@@ -14,9 +14,10 @@
     "test": "pnpm -r run test",
     "test:engine": "cd engine && ${PBFUZZ_PYTHON:-.venv/bin/python} -m pytest -q",
     "check:clients": "node packages/dsh-pbfuzz/scripts/bundle-client.mjs && node packages/dsh-kanalyzer/scripts/build-client.mjs",
-    "test:all": "pnpm run test && pnpm run check:clients && pnpm run test:engine",
+    "test:all": "pnpm run test && pnpm run check:clients && pnpm run check:package && pnpm run test:engine",
     "codegen": "node scripts/codegen.mjs",
     "codegen:check": "node scripts/codegen.mjs --check",
+    "check:package": "node scripts/check-package.mjs",
     "test:dsh": "vitest run --config dsh-tests/vitest.config.ts",
     "typecheck:dsh": "tsc -p dsh-tests/tsconfig.json"
   },

@@ -7,31 +7,42 @@ it runs a directed-fuzzing loop until it produces a **verified Proof-of-Vulnerab
 
 ## Quick start
 
-Ubuntu 22.04/24.04 x86-64, Node.js ≥ 22, Python ≥ 3.11.
+Ubuntu 22.04/24.04 x86-64, Node.js ≥ 22, Python ≥ 3.11 on `PATH` (the plugin picks the first of
+`python3`, `python3.15` … `python3.11` that is new enough, so Ubuntu 22.04's default 3.10 is fine
+next to an installed `python3.11`/`python3.12`; or set **Settings → pbfuzz → Python interpreter**).
 
-**1. Get this repo**
+**1. Set up DeepSeek Harness** (skip if you already have it) — follow the
+[official docs](https://deepseek-harness.github.io/deepseek-harness/) to install DSH and configure
+your DeepSeek API key. Use the DSH version these plugins are verified against (`DSH_VERSION` in
+[`HARNESS_COMMIT`](HARNESS_COMMIT)); npm's `latest` can be outside their peer range.
+
+**2. Install pbfuzz from npm**
+
+```sh
+npx @deepseek-ai/dsh@0.2.0-rc.2 plugin --profile web add @pbfuzz/dsh-pbfuzz
+```
+
+That is all: the package ships the Python engine, its schemas and PyYAML, so there is nothing to
+build or `pip install`. Then start DSH with `npx @deepseek-ai/dsh@0.2.0-rc.2 web`.
+
+Optional static analysis (C/C++ reachability; needs an LLVM 14 toolchain, see
+[`packages/dsh-kanalyzer`](packages/dsh-kanalyzer)):
+
+```sh
+npx @deepseek-ai/dsh@0.2.0-rc.2 plugin --profile web add @pbfuzz/dsh-kanalyzer
+```
+
+Every push to `master` is published to npm as `0.1.<commit count>` (tag `latest`) by
+[`ci.yml`](.github/workflows/ci.yml), so `add` always installs the current `master`.
+
+### From source
 
 ```sh
 git clone <this-repo-url> pbfuzz-dsh && cd pbfuzz-dsh
-```
-
-**2. Set up DeepSeek Harness** (skip if you already have it) — follow the
-[official docs](https://deepseek-harness.github.io/deepseek-harness/) to install DSH and configure
-your DeepSeek API key. Use the DSH version these plugins are verified against (`DSH_VERSION` in
-[`HARNESS_COMMIT`](HARNESS_COMMIT)); npm's `latest` can be outside their peer range. The quickest
-check that it works:
-
-```sh
-npx @deepseek-ai/dsh@0.2.0-rc.2 web
-```
-
-**3. Install pbfuzz**
-
-```sh
 ./install.sh
 ```
 
-That builds the plugins and the Python engine and adds them to DSH. Restart
+That builds the plugins and the Python engine and adds the local build to DSH. Restart
 `npx @deepseek-ai/dsh@0.2.0-rc.2 web` and you're done.
 
 | Script | Does |

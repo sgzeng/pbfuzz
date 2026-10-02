@@ -52,7 +52,7 @@ export interface Workspace {
 }
 
 /** A throwaway target repo with a confirmed, engine-valid campaign for it (tracer off: no gdb needed). */
-export function createWorkspace(python: string): Workspace {
+export function createWorkspace(): Workspace {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'pbfuzz-ws-')))
   const campaignDir = join(root, '.pbfuzz', 'itest')
   mkdirSync(join(campaignDir, 'state'), { recursive: true })
@@ -64,7 +64,7 @@ export function createWorkspace(python: string): Workspace {
     'confirmed: true',
     `target: { repo: ${root}, language: python }`,
     "bug: { targets: [{ location: 'target.py:5' }] }",
-    `entry: { kind: executable, run_cmd: '${python} ${root}/target.py @@', input_channel: file }`,
+    `entry: { kind: executable, run_cmd: 'python3 ${root}/target.py @@', input_channel: file }`,
     "oracle: { mode: preexisting, reached_pattern: 'PBFUZZ_REACHED:\\s*(\\S+)', triggered_pattern: 'PBFUZZ_TRIGGERED:\\s*(\\S+)' }",
     "tracer: 'off'",
     `output: { dir: ${campaignDir} }`,
@@ -89,7 +89,7 @@ export interface Session {
 
 /** A real agent, on a scripted model, in a fresh workspace. The campaign is NOT started. */
 export async function openSession(dsh: RealDsh): Promise<Session> {
-  const workspace = createWorkspace(dsh.python)
+  const workspace = createWorkspace()
   const llm = await installScriptedLlm(dsh, `scripted-${++sessions}`)
   const { agent } = await dsh.ctx.get('agents').create({
     sessionId: `session-itest-${sessions}`,

@@ -5,7 +5,7 @@
  * @module @pbfuzz/dsh-pbfuzz/engine-bridge
  */
 
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { delimiter, join, resolve } from 'node:path'
 import { EngineRpcClient, type RpcMethod, type RpcProgressListener } from './core/rpc.ts'
@@ -18,20 +18,60 @@ export const ENGINE_ARGV = ['-m', 'pbfuzz_engine.rpc'] as const
 
 /**
  * Environment that lets `python -m pbfuzz_engine.rpc` import the engine without a pip install:
- * `PYTHONPATH` gains the engine source directory, found as `$PBFUZZ_ENGINE_DIR`, a copy vendored
- * at `<package>/engine`, or the in-repo `<repo>/engine`. Empty when none exists, i.e. the engine
- * is expected to be installed into `execution.pythonPath`. The interpreter still needs PyYAML.
+ * `PYTHONPATH` gains the engine source directory, found as `$PBFUZZ_ENGINE_DIR`, the in-repo
+ * `<repo>/engine` (a development checkout wins, so a staged copy is never stale there), or the
+ * copy shipped in the npm package at `<package>/engine` (engine + pure-Python PyYAML, staged by
+ * `scripts/stage-engine.mjs`; nothing to pip install). Empty when none exists, i.e. the engine is
+ * expected to be installed into `execution.pythonPath`, which then also needs PyYAML.
  * @param packageRoot - the dsh-pbfuzz package root.
  * @param env - the environment to extend (defaults to this process's).
  * @returns extra environment for the sidecar.
  */
 export function engineEnv(packageRoot: string, env: NodeJS.ProcessEnv = process.env): Record<string, string> {
-  const candidates = [env.PBFUZZ_ENGINE_DIR, join(packageRoot, 'engine'), join(packageRoot, '..', '..', 'engine')]
+  const candidates = [env.PBFUZZ_ENGINE_DIR, join(packageRoot, '..', '..', 'engine'), join(packageRoot, 'engine')]
   const dir = candidates.find((d): d is string => d !== undefined && d !== '' && existsSync(join(d, 'pbfuzz_engine', 'rpc.py')))
   if (dir === undefined) return {}
   const abs = resolve(dir)
   const existing = env.PYTHONPATH
   return { PYTHONPATH: existing !== undefined && existing !== '' ? `${abs}${delimiter}${existing}` : abs }
+}
+
+/** The value of `execution.pythonPath` meaning "pick an interpreter for me". */
+export const DEFAULT_PYTHON = 'python3'
+
+/** Interpreters tried, in order, when `execution.pythonPath` is left at {@link DEFAULT_PYTHON}. */
+const PYTHON_CANDIDATES = [DEFAULT_PYTHON, 'python3.15', 'python3.14', 'python3.13', 'python3.12', 'python3.11'] as const
+
+/** Interpreter chosen for the default, kept for the process lifetime: a probe costs a process spawn. */
+let resolvedDefault: string | undefined
+
+/**
+ * Whether `command` is a Python >= 3.11 (the engine's floor). Runs `command` once, briefly.
+ * @param command - interpreter name or path.
+ */
+function isPython311(command: string): boolean {
+  const run = spawnSync(command, ['-c', 'import sys; print(sys.version_info >= (3, 11))'], { encoding: 'utf8', timeout: 1_500 })
+  return run.status === 0 && run.stdout.trim() === 'True'
+}
+
+/**
+ * The interpreter the sidecar is spawned with. A configured value other than {@link DEFAULT_PYTHON}
+ * is used as is. The default resolves to the first of `python3`, `python3.13`, `python3.12`,
+ * `python3.11` that is Python >= 3.11, because the engine needs it and a distribution's `python3`
+ * may be older (Ubuntu 22.04 ships 3.10). When none qualifies it stays `python3`, so the failure
+ * is the engine's own diagnosed one (`selfcheck.engine`: "the engine needs Python >= 3.11").
+ * @param configured - `execution.pythonPath`.
+ * @param isSuitable - the version probe; injectable for tests.
+ * @returns the command to spawn.
+ */
+export function resolvePythonPath(configured: string, isSuitable: (command: string) => boolean = isPython311): string {
+  if (configured !== DEFAULT_PYTHON) return configured
+  const real = isSuitable === isPython311
+  if (real && resolvedDefault !== undefined) return resolvedDefault
+  const found = PYTHON_CANDIDATES.find(isSuitable)
+  if (found === undefined) return DEFAULT_PYTHON // not remembered: the user may install Python and retry
+  if (real) resolvedDefault = found
+  return found
 }
 
 /** Options for the sidecar. */
@@ -165,7 +205,8 @@ export class EngineBridge {
 
   private ensure(): EngineRpcClient {
     if (this.client !== undefined && this.child?.exitCode === null) return this.client
-    const child = spawn(this.options.pythonPath, [...ENGINE_ARGV], {
+    const python = resolvePythonPath(this.options.pythonPath)
+    const child = spawn(python, [...ENGINE_ARGV], {
       stdio: ['pipe', 'pipe', 'pipe'],
       // Scrubbed: this sidecar runs model-written generator/extractor Python, so no host-process
       // credential (a harness API key, a session token, …) may reach it (see SENSITIVE_ENV_NAME).
@@ -178,7 +219,7 @@ export class EngineBridge {
     })
     const closeListeners: ((reason: string) => void)[] = []
     const close = (reason: string): void => { for (const l of closeListeners) l(reason) }
-    child.on('error', error => { close(`failed to start ${this.options.pythonPath}: ${error.message}`) })
+    child.on('error', error => { close(`failed to start ${python}: ${error.message}`) })
     child.on('exit', (code, sig) => { close(`exited with ${sig ?? `code ${code}`}`) })
     const client = new EngineRpcClient({
       write: line => { child.stdin.write(line) },
