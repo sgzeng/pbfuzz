@@ -3,6 +3,10 @@ name: ci
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -14,6 +18,8 @@ jobs:
       PBFUZZ_PYTHON: python
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v4   # version from package.json#packageManager
 
@@ -46,3 +52,71 @@ jobs:
 
       - name: Engine tests
         run: cd engine && python -m pytest -q
+
+      - name: Build
+        run: pnpm -r build
+
+      # Packs both plugins and checks what a user would get: runtime files, repository/license
+      # metadata, and the engine from the extracted tarball running without PyYAML installed.
+      - name: Package check (npm tarballs are ready to use)
+        run: node scripts/check-package.mjs
+
+  # Every push to master publishes the plugins to npm as 0.<minor>.<commit count>, tagged `latest`.
+  # awesome-dsh-plugin (dshmarket.com) probes npm daily and installs `latest`, so the market
+  # follows master with no further step. Needs the NPM_TOKEN repository secret (an npm granular
+  # access token with read/write on the @pbfuzz scope); without it the publish step is skipped.
+  publish:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # npm provenance
+    # One publish at a time, in push order; a newer push waits rather than racing.
+    concurrency:
+      group: npm-publish
+      cancel-in-progress: false
+    steps:
+      # The token is only ever in the environment of the steps that need it: this one (to learn
+      # whether it exists) and the publish step. Build tooling never sees it.
+      - name: Is NPM_TOKEN set?
+        id: token
+        env:
+          T: ${{ secrets.NPM_TOKEN }}
+        run: if [ -n "$T" ]; then echo present=true >> "$GITHUB_OUTPUT"; else echo present=false >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the version is derived from the commit count
+          persist-credentials: false
+
+      # A re-run of an old workflow must not publish an old build over a newer one.
+      - name: Is this still the tip of master?
+        id: tip
+        run: |
+          git fetch --quiet https://github.com/${{ github.repository }}.git master
+          if [ "$(git rev-parse HEAD)" = "$(git rev-parse FETCH_HEAD)" ]; then echo tip=true >> "$GITHUB_OUTPUT"; else echo tip=false >> "$GITHUB_OUTPUT"; echo "::notice::not the tip of master, so not publishing"; fi
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Publish to npm
+        if: steps.token.outputs.present == 'true' && steps.tip.outputs.tip == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: node scripts/publish-npm.mjs
+
+      - name: Publish skipped
+        if: steps.token.outputs.present != 'true'
+        run: echo "::warning::NPM_TOKEN is not set, so nothing was published. Add it under Settings > Secrets and variables > Actions."

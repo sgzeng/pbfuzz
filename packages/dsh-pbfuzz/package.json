@@ -4,6 +4,25 @@
   "version": "0.1.0",
   "type": "module",
   "license": "PolyForm-Noncommercial-1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sgzeng/pbfuzz.git",
+    "directory": "packages/dsh-pbfuzz"
+  },
+  "homepage": "https://github.com/sgzeng/pbfuzz/tree/master/packages/dsh-pbfuzz",
+  "bugs": {
+    "url": "https://github.com/sgzeng/pbfuzz/issues"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "fuzzing",
+    "directed-fuzzing",
+    "vulnerability-reproduction"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "exports": {
@@ -39,15 +58,21 @@
     "lib/**/*.d.ts",
     "cordis.patch.yml",
     "skills/**",
-    "canaries/**"
+    "canaries/**",
+    "engine/**",
+    "contracts/**",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -b && node scripts/bundle-client.mjs",
     "bundle:client": "node scripts/bundle-client.mjs",
     "check:client": "node scripts/bundle-client.mjs --check",
-    "prepare": "pnpm run build",
+    "prepare": "npm run build",
     "typecheck": "tsc -b --force --pretty false",
-    "test": "vitest run --dir tests"
+    "test": "vitest run --dir tests",
+    "prepack": "node scripts/stage-engine.mjs",
+    "stage:engine": "node scripts/stage-engine.mjs",
+    "postpack": "node scripts/stage-engine.mjs --clean"
   },
   "dependencies": {
     "yaml": "^2.6.0",
