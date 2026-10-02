@@ -7,7 +7,7 @@ the whole web client). This is how pbfuzz keeps up, and what to check when it do
 
 | What | Where |
 |---|---|
-| The real DSH, newest from npm, booted in-process with both plugins installed; every push and PR | `dsh-tests/`, CI job `dsh-latest` in `.github/workflows/ci.yml`, locally `pnpm run test:dsh` |
+| The real DSH, newest from npm, booted in-process with both plugins installed; every push and PR, and **a failure blocks the npm publish** | `dsh-tests/`, CI job `dsh-latest` in `.github/workflows/ci.yml`, locally `pnpm run test:dsh` |
 | Weekly check against npm's `latest`, opens a `dsh-compat` issue on failure | `.github/workflows/dsh-compat.yml` |
 | Claude diagnoses it and opens a fix **PR** (needs `ANTHROPIC_API_KEY`) | `.github/workflows/claude-autofix.yml` |
 | The check itself — run it locally to reproduce | `scripts/compat-check.sh [version \| --current]` |

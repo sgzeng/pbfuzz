@@ -108,8 +108,10 @@ jobs:
   # awesome-dsh-plugin (dshmarket.com) probes npm daily and installs `latest`, so the market
   # follows master with no further step. Needs the NPM_TOKEN repository secret (an npm granular
   # access token with read/write on the @pbfuzz scope); without it the publish step is skipped.
+  # Nothing is published unless BOTH `test` and `dsh-latest` pass: a build that does not work in the
+  # newest DeepSeek Harness must not reach npm, because that is what users install.
   publish:
-    needs: test
+    needs: [test, dsh-latest]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:
