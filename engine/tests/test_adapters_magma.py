@@ -104,13 +104,28 @@ def test_build_campaign_with_seeds_enables_corpus():
     assert c["analysis"]["corpus"] == {"enabled": True, "seeds_dir": "/work/magma/targets/lua/corpus/lua"}
 
 
-def test_bug_patch_is_named_in_the_header_not_the_document():
-    patch = "/work/magma/targets/lua/patches/bugs/LUA001.patch"
-    adapter_input = _lua001_input(bug_patch=patch)
+def test_adapter_has_no_field_to_carry_a_bug_patch_path():
+    """The agent must only ever be handed the bug's location and its MAGMA_LOG condition — what a
+    real crash report or CVE advisory gives you — never the patch that shows the buggy code next
+    to Magma's own fix (`#ifdef MAGMA_ENABLE_FIXES`). A prior version of this module accepted
+    `bug_patch`/`--bug-patch` and printed it into the campaign yaml's provenance header; a real
+    headless run then read that comment, opened the patch, and transcribed the `#else` branch
+    instead of reasoning from the location. There is now no field to pass one through at all."""
+    with pytest.raises(TypeError):
+        MagmaAdapterInput(  # type: ignore[call-arg]
+            target_name="lua", target_repo="/work", bug_id="LUA001", binary="/work/lua",
+            targets=(MagmaTarget(location="ldebug.c:197", condition="INT_MAX - nextra <= (n - 1)"),),
+            bug_patch="/work/magma/targets/lua/patches/bugs/LUA001.patch",
+        )
+
+
+def test_provenance_header_never_names_a_patch_path():
+    adapter_input = _lua001_input()
     c = build_campaign(adapter_input)
     assert c["bug"] == {"targets": [{"location": "ldebug.c:197", "condition": "INT_MAX - nextra <= (n - 1)"}]}
     header = provenance_header(adapter_input)
-    assert patch in header and "ldebug.c:197" in header
+    assert "ldebug.c:197" in header
+    assert ".patch" not in header
 
 
 def test_the_generated_oracle_recognises_real_magma_log_stderr():
@@ -224,7 +239,7 @@ def _undeclared_keys(doc: Any, schema: dict[str, Any], path: str = "") -> list[s
     {},
     {"prebuilt_dir": "/work/BBtargets/LUA001"},
     {"bitcode": "/work/lua.0.0.preopt.bc", "lto_libs": ("/work/libreadline.a",)},
-    {"static_analysis": False, "seeds_dir": "/work/corpus", "bug_patch": "/work/LUA001.patch"},
+    {"static_analysis": False, "seeds_dir": "/work/corpus"},
 ])
 def test_build_campaign_emits_only_schema_declared_keys(overrides):
     """Regression: the adapter used to emit `confirmed_at`, `notes` and

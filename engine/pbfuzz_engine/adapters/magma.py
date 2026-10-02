@@ -22,6 +22,16 @@ The emitted dict carries only keys `contracts/campaign.schema.json` declares: th
 `/pbfuzz run` validator rejects anything else, so provenance goes in a YAML comment header
 (`campaign_to_yaml(..., header=...)`) rather than in the document.
 
+Deliberately never named, anywhere this module writes: the bug's own `<BUG_ID>.patch` (the diff
+that shows the buggy code next to Magma's `#ifdef MAGMA_ENABLE_FIXES` original). A real crash
+report or CVE advisory gives a reverse-engineer a location and, at best, a condition under which
+it fires — never a diff against the fix — and a campaign that hands the agent the patch path
+(as a prior version of this module did, in the provenance header) turns directed fuzzing into
+transcription: read the `#else` branch, write the one input that hits it. `bug.targets[].location`
+and `.condition` (read back off the *built* source at that exact line, not the patch) are the only
+ground truth this module passes through; there is no field here a caller could even populate with
+a patch path to leak it.
+
 This module only builds and serialises the campaign dict; it does not touch the filesystem beyond
 what the CLI's `--write` flag asks for, so it is exercised with plain unit tests.
 
@@ -91,8 +101,6 @@ class MagmaAdapterInput:
         language: `target.language`; Magma benchmarks are C/C++.
         entry_cwd: `entry.cwd`, when the binary must run from a specific directory.
         input_channel: `entry.input_channel`; Magma's `afl_driver.cpp` harnesses take a file.
-        bug_patch: Path to `<BUG_ID>.patch`, named in the yaml's provenance header (the campaign
-            schema's `bug` carries only `targets`).
         bitcode: The `*.0.0.preopt.bc` KAMain would analyse fresh (mode `lto`/`wllvm`).
         entries: KAMain `-entry-list`; Magma's harnesses have no `LLVMFuzzerTestOneInput` symbol
             once linked into the AFL driver, so `main` is the correct default.
@@ -118,7 +126,6 @@ class MagmaAdapterInput:
     language: str = "c"
     entry_cwd: str | None = None
     input_channel: str = "file"
-    bug_patch: str | None = None
     bitcode: str | None = None
     entries: tuple[str, ...] = ("main",)
     prebuilt_dir: str | None = None
@@ -204,7 +211,8 @@ def build_campaign(input: MagmaAdapterInput) -> dict[str, Any]:
     Returns:
         A dict matching `contracts/campaign.schema.json`, with `confirmed: true` already set —
         headless runs need no interactive step, since every field traces back to Magma's own,
-        already-reviewed ground truth (the patch, BBtargets.txt, the built binary).
+        already-reviewed ground truth (BBtargets.txt, the MAGMA_LOG condition read off the built
+        source, the built binary) — deliberately never the bug patch; see the module docstring.
 
     Raises:
         ValueError: `targets` is empty — a Magma bug always has at least one MAGMA_LOG call site,
@@ -296,14 +304,12 @@ def provenance_header(input: MagmaAdapterInput, *, now: datetime | None = None) 
         + ", ".join(t.location for t in input.targets) + "; the bug triggers when <condition> holds "
         "(bug.targets[].condition).",
     ]
-    if input.bug_patch is not None:
-        lines.append(f"Bug patch (injects the bug and its MAGMA_LOG canary): {input.bug_patch}")
     lines += [
         f"Oracle: magma/src/canary.c prints '{_REACHED_TEMPLATE.format(bug_id=input.bug_id)}' / "
         f"'{_TRIGGERED_TEMPLATE.format(bug_id=input.bug_id)}' to stderr; oracle.mode is preexisting, "
         "so no canary insertion or rebuild is needed.",
-        "confirmed: true because every field traces back to Magma's own ground truth (the bug "
-        "patch, BBtargets.txt, the built binary).",
+        "confirmed: true because every field traces back to Magma's own ground truth "
+        "(BBtargets.txt, the built binary).",
     ]
     return "\n".join(lines)
 
@@ -361,7 +367,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--language", default="c")
     parser.add_argument("--cwd", dest="entry_cwd")
     parser.add_argument("--input-channel", default="file", choices=["file", "stdin"])
-    parser.add_argument("--bug-patch")
+    # Deliberately no --bug-patch: see the module docstring. A caller with a patch path on hand
+    # (e.g. a build script's own sanity check) has nothing to pass it to here.
     parser.add_argument("--bitcode")
     parser.add_argument("--entries", action="append", default=[])
     parser.add_argument("--prebuilt-dir")
@@ -409,7 +416,6 @@ def main(argv: list[str] | None = None) -> int:
         language=args.language,
         entry_cwd=args.entry_cwd,
         input_channel=args.input_channel,
-        bug_patch=args.bug_patch,
         bitcode=args.bitcode,
         entries=tuple(args.entries) or ("main",),
         prebuilt_dir=args.prebuilt_dir,

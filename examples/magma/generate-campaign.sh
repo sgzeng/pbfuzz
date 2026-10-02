@@ -5,8 +5,15 @@
 #   WORK=$PWD/magma-work ./generate-campaign.sh                  # TARGET_NAME=lua BUG_ID=LUA001
 #   WORK=... TARGET_NAME=libpng BUG_ID=PNG001 ./generate-campaign.sh
 #
-# Every path can be overridden on its own (REPO, BINARY, RUN_ARGS, SEEDS_DIR, BUG_PATCH,
-# BBTARGETS, OUTPUT); see below. Prints the path of the written yaml on stdout.
+# Every path can be overridden on its own (REPO, BINARY, RUN_ARGS, SEEDS_DIR, BBTARGETS, OUTPUT);
+# see below. Prints the path of the written yaml on stdout.
+#
+# What the agent gets, deliberately: only the bug's location (BBtargets.txt) and the MAGMA_LOG
+# condition read off the *built* source at that line — the same two things a real crash report or
+# CVE advisory would give you. Magma's own bug patch (which shows the buggy code right next to its
+# `#ifdef MAGMA_ENABLE_FIXES` fix) is never read by this script and never named in the campaign;
+# build-target.sh deletes it from the built tree once applied, precisely so nothing here could
+# hand it to the agent even by accident.
 #
 # Static analysis: off by default — the campaign runs on gdb traces alone. Set PREBUILT_DIR to a
 # directory of KAMain outputs (Magma's SKIP_STATIC_ANALYSIS path, or a previous kanalyzer run), or
@@ -32,14 +39,12 @@ REPO="${REPO:-$TARGET/repo}"
 SRC_DIR="${SRC_DIR:-$REPO}"                # where the patched sources live (sqlite3: $TARGET/work)
 BINARY="${BINARY:-$TARGET/out/$PROGRAM}"
 SEEDS_DIR="${SEEDS_DIR:-$TARGET/corpus/$PROGRAM}"
-BUG_PATCH="${BUG_PATCH:-$TARGET/patches/bugs/$BUG_ID.patch}"
 BBTARGETS="${BBTARGETS:-${PREBUILT_DIR:+$PREBUILT_DIR/BBtargets.txt}}"
 BBTARGETS="${BBTARGETS:-$TARGET/BBtargets/$BUG_ID/BBtargets.txt}"
 OUTPUT="${OUTPUT:-$TARGET/campaigns/$BUG_ID.campaign.yaml}"
 PY="${PBFUZZ_PYTHON:-$PBFUZZ_ROOT/engine/.venv/bin/python}"
 
 [ -x "$BINARY" ] || { echo "error: no binary at $BINARY (PROGRAM=$PROGRAM)" >&2; exit 1; }
-[ -f "$BUG_PATCH" ] || { echo "error: no patch for $BUG_ID at $BUG_PATCH" >&2; exit 1; }
 [ -x "$PY" ] || { echo "error: no engine Python at $PY; run ./build.sh in $PBFUZZ_ROOT or set PBFUZZ_PYTHON" >&2; exit 1; }
 
 # BBtargets.txt: every MAGMA_LOG("<BUG_ID>", ...) call site as basename:line — the same grep
@@ -65,7 +70,6 @@ corpus_args=()
   --binary "$BINARY" \
   --run-cmd "$BINARY ${RUN_ARGS}" \
   --bbtargets "$BBTARGETS" \
-  --bug-patch "$BUG_PATCH" \
   "${static_args[@]}" \
   "${corpus_args[@]}" \
   --write "$OUTPUT"

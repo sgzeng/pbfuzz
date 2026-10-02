@@ -11,7 +11,12 @@
 #   repo/      the upstream source with every Magma patch applied (the campaign's target.repo)
 #   out/       magma.a and the built programs (configrc's PROGRAMS)
 #   corpus/    Magma's seeds, one directory per program
-#   patches/   Magma's setup and bug patches (bugs/<BUG_ID>.patch)
+#
+# No patches/ in that list: Magma's setup and bug patches (bugs/<BUG_ID>.patch — the diff that
+# shows the buggy code right next to its `#ifdef MAGMA_ENABLE_FIXES` fix) are deleted once applied.
+# A pbfuzz campaign against this target must only ever see the bug's location and its MAGMA_LOG
+# condition (generate-campaign.sh), never the patch that gives the mechanism away; re-running this
+# script re-fetches the patches from $MAGMA_ROOT and deletes them again, so nothing is lost.
 #
 # Verified with lua (LUA001). Other targets follow the same steps; their system dependencies come
 # from Magma's own preinstall scripts (INSTALL_DEPS=1 runs them, with sudo when not root).
@@ -52,6 +57,14 @@ if [ ! -f "$TARGET/.magma-patched" ]; then
   bash "$MAGMA/apply_patches.sh"
   touch "$TARGET/.magma-patched"
 fi
+
+# Delete the patches now that they're applied: pbfuzz's agent session runs with its cwd inside
+# repo/, and patches/bugs/<BUG_ID>.patch sitting right next to it is the bug's own fix-vs-buggy
+# diff — strictly more than the location+condition a campaign is meant to hand over (see the
+# header above). The tar copy on every run restores this directory from $MAGMA_ROOT before this
+# point, so deleting it here is free: a later re-run (even with .magma-patched already set) just
+# re-deletes the freshly-restored copy again.
+rm -rf "$TARGET/patches"
 
 # The Dockerfile's build environment, with canaries on (MAGMA_ENABLE_CANARIES) so every injected
 # bug prints "MAGMA: Bug <ID> reached/triggered" — the oracle the pbfuzz campaign reuses.

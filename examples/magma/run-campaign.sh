@@ -7,6 +7,12 @@
 #
 # PROFILE (default: headless) must have the plugin installed: ./install.sh --profile headless.
 # Budgets (pbfuzz.budget.* in ~/.dsh/settings.yaml) are the only brake on an unattended run.
+#
+# MAGMA_ROOT, if set, also hides this target's bug patches in the *source* Magma checkout for the
+# session's duration (restored on exit, any outcome). build-target.sh already deletes them from
+# the built tree, but the agent's shell has ordinary filesystem access and, given MAGMA_ROOT on
+# disk, can and does go looking for patches/bugs/<BUG_ID>.patch there — chmod does not stop a
+# root-run agent from reading it, so this moves the directory aside instead.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PBFUZZ_ROOT="$(cd "$HERE/../.." && pwd)"
@@ -24,6 +30,21 @@ PY="${PBFUZZ_PYTHON:-$PBFUZZ_ROOT/engine/.venv/bin/python}"
 
 # The campaign's target.repo is the workspace: the agent reads the target source from there.
 read -r REPO OUTDIR < <("$PY" -c 'import sys,yaml; c=yaml.safe_load(open(sys.argv[1])); print(c["target"]["repo"], c["output"]["dir"])' "$CAMPAIGN")
+
+# Opportunistic, root-proof hide of the bug patches at their source: target.repo's layout is
+# always $WORK/<target_name>/repo (build-target.sh), so <target_name> is the name of REPO's
+# containing directory. Only acts when MAGMA_ROOT is given and that target's patches/ still
+# exists there; always restores on exit via the trap, success or failure alike.
+if [ -n "${MAGMA_ROOT:-}" ]; then
+  target_name="$(basename "$(dirname "$REPO")")"
+  src_patches="$MAGMA_ROOT/targets/$target_name/patches"
+  if [ -d "$src_patches" ]; then
+    hidden_patches="$(mktemp -d)/patches"
+    mv "$src_patches" "$hidden_patches"
+    trap 'mv "$hidden_patches" "$src_patches"' EXIT
+    echo "==> hid $src_patches for the agent session (restored on exit)"
+  fi
+fi
 
 echo "==> dsh@$DSH_VERSION --profile $PROFILE in $REPO"
 status=0
