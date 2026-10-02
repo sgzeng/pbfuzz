@@ -1,7 +1,7 @@
 /**
- * The kanalyzer settings card. It renders the `kanalyzer` namespace from
- * `contracts/kanalyzer-settings.schema.json` and owns its own chrome: a bundle
- * outside the DSH repo cannot value-import the Plugins section's card shell.
+ * The kanalyzer settings page (slot `plugins.row.config`). It renders the `kanalyzer` namespace from
+ * `contracts/kanalyzer-settings.schema.json`; the Plugins page draws the title, icon and crumb and
+ * asks for either the one-liner (`view: 'summary'`) or the form (`view: 'page'`).
  *
  * DSH ships no select, textarea or path picker, so enums are a `Menu` anchored on
  * a `Button`, and string lists are rows of `Input`s with add/remove buttons.
@@ -10,14 +10,14 @@
 import { useState, type ReactNode } from 'react'
 import { Button, Input, Menu, Switch, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
+import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type { ActionState, FieldState, KanalyzerCardFace, KanalyzerCardState } from './controller.ts'
 import { DEFAULT_FIELDS, DUMP_FIELDS, INSTALL_FIELDS, STANDALONE_FIELDS, type DraftValue, type FieldSpec } from './fields.ts'
 import type { KanalyzerLocaleKey } from './locales.ts'
 
 /** Props the renderer binds for this card. */
 export type KanalyzerCardProps =
-  PropsRuntime<'settings.plugin.item'>
+  PropsRuntime<'plugins.row.config'>
   & PropsLocale<'settings.kanalyzer'>
   & InjectFace<KanalyzerCardFace>
 
@@ -298,8 +298,8 @@ function StatusGroup({ t, state, onInstallDeps }: { t: T; state: KanalyzerCardSt
 export function KanalyzerCard(props: KanalyzerCardProps) {
   const t = props.t as T
   const state = props.useKanalyzerCard(snapshot => snapshot)
-  const [open, setOpen] = useState(false)
   if (!state.available) return null
+  if (props.view === 'summary') return t('description')
   const disabled = !state.writable || state.saving
   const control = (field: FieldSpec) => (
     <Control
@@ -315,95 +315,81 @@ export function KanalyzerCard(props: KanalyzerCardProps) {
   const nonDump = DEFAULT_FIELDS.filter(field => !DUMP_FIELDS.includes(field))
   const busy = state.build.phase === 'pending' || state.doctor.phase === 'pending' || state.installDeps.phase === 'pending'
   return (
-    <li className="kz-card" data-open={open ? 'true' : 'false'}>
-      <button
-        type="button"
-        className="kz-header"
-        aria-expanded={open}
-        aria-label={`${t(open ? 'collapse' : 'expand')}: ${t('title')}`}
-        onClick={() => { setOpen(!open) }}
-      >
-        <span className="kz-headtext">
-          <span className="kz-name">{t('title')}</span>
-          <span className="kz-desc">{t('description')}</span>
-        </span>
-        {state.dirty ? <Tag tone="neutral">{t('unsaved')}</Tag> : null}
-        <Tag tone={state.status.installed ? 'success' : 'warning'}>
-          {state.status.installed ? t('tagInstalled') : t('tagNotBuilt')}
-        </Tag>
-      </button>
-      {open
-        ? (
-          <div className="kz-body">
-            <p className="kz-note">{t('pbfuzzNote')}</p>
-            {!state.writable ? <p className="kz-note" role="status">{t('readOnly')}</p> : null}
+    <div className="kz-card" data-open="true">
+      <div className="kz-body">
+        <div className="kz-tags">
+          {state.dirty ? <Tag tone="neutral">{t('unsaved')}</Tag> : null}
+          <Tag tone={state.status.installed ? 'success' : 'warning'}>
+            {state.status.installed ? t('tagInstalled') : t('tagNotBuilt')}
+          </Tag>
+        </div>
+        <p className="kz-note">{t('pbfuzzNote')}</p>
+        {!state.writable ? <p className="kz-note" role="status">{t('readOnly')}</p> : null}
 
-            <StatusGroup t={t} state={state} onInstallDeps={props.installDeps} />
+        <StatusGroup t={t} state={state} onInstallDeps={props.installDeps} />
 
-            <div className="kz-actions">
-              <div className="kz-action">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  title={t('buildHint')}
-                  disabled={state.build.phase === 'pending' || state.dirty}
-                  onClick={props.build}
-                >
-                  {state.status.installed ? t('rebuild') : t('build')}
-                </Button>
-              </div>
-              <div className="kz-action">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  title={t('selfTestHint')}
-                  disabled={state.doctor.phase === 'pending'}
-                  onClick={props.doctor}
-                >
-                  {t('selfTest')}
-                </Button>
-              </div>
-              <Button variant="ghost" size="sm" disabled={state.refreshing} onClick={props.refresh}>
-                {state.refreshing ? t('refreshing') : t('refresh')}
-              </Button>
-            </div>
-            <p className="kz-hint">{t('buildHint')}</p>
-            <ActionResult t={t} state={state.build} onOpen={props.openSession} />
-            {state.buildCwdFallback && state.build.phase !== 'idle' ? <p className="kz-hint">{t('cwdFallback')}</p> : null}
-            <ActionResult t={t} state={state.doctor} onOpen={props.openSession} />
-            <ActionResult t={t} state={state.installDeps} onOpen={props.openSession} />
-            {state.refreshFailed && !busy ? <p className="kz-hint" data-invalid="true">{t('refreshFailed')}</p> : null}
-
-            <Group title={t('groupInstall')} hint={t('groupInstallHint')}>
-              {INSTALL_FIELDS.map(control)}
-            </Group>
-            <Group title={t('groupDefaults')} hint={t('groupDefaultsHint')}>
-              {nonDump.map(control)}
-            </Group>
-            <Group title={t('groupDumps')} hint={t('groupDumpsHint')}>
-              {DUMP_FIELDS.map(control)}
-            </Group>
-            <Group title={t('groupStandalone')} hint={t('groupStandaloneHint')} manual>
-              {STANDALONE_FIELDS.map(control)}
-            </Group>
-
-            <div className="kz-footer">
-              {state.saveFailed ? <p className="kz-failed" role="status">{t('saveFailed')}</p> : null}
-              <Button variant="ghost" size="sm" disabled={!state.dirty || state.saving} onClick={props.discard}>
-                {t('discard')}
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                disabled={!state.dirty || state.invalid || state.saving || !state.writable}
-                onClick={props.save}
-              >
-                {state.saving ? t('saving') : t('save')}
-              </Button>
-            </div>
+        <div className="kz-actions">
+          <div className="kz-action">
+            <Button
+              variant="primary"
+              size="sm"
+              title={t('buildHint')}
+              disabled={state.build.phase === 'pending' || state.dirty}
+              onClick={props.build}
+            >
+              {state.status.installed ? t('rebuild') : t('build')}
+            </Button>
           </div>
-        )
-        : null}
-    </li>
+          <div className="kz-action">
+            <Button
+              variant="outline"
+              size="sm"
+              title={t('selfTestHint')}
+              disabled={state.doctor.phase === 'pending'}
+              onClick={props.doctor}
+            >
+              {t('selfTest')}
+            </Button>
+          </div>
+          <Button variant="ghost" size="sm" disabled={state.refreshing} onClick={props.refresh}>
+            {state.refreshing ? t('refreshing') : t('refresh')}
+          </Button>
+        </div>
+        <p className="kz-hint">{t('buildHint')}</p>
+        <ActionResult t={t} state={state.build} onOpen={props.openSession} />
+        {state.buildCwdFallback && state.build.phase !== 'idle' ? <p className="kz-hint">{t('cwdFallback')}</p> : null}
+        <ActionResult t={t} state={state.doctor} onOpen={props.openSession} />
+        <ActionResult t={t} state={state.installDeps} onOpen={props.openSession} />
+        {state.refreshFailed && !busy ? <p className="kz-hint" data-invalid="true">{t('refreshFailed')}</p> : null}
+
+        <Group title={t('groupInstall')} hint={t('groupInstallHint')}>
+          {INSTALL_FIELDS.map(control)}
+        </Group>
+        <Group title={t('groupDefaults')} hint={t('groupDefaultsHint')}>
+          {nonDump.map(control)}
+        </Group>
+        <Group title={t('groupDumps')} hint={t('groupDumpsHint')}>
+          {DUMP_FIELDS.map(control)}
+        </Group>
+        <Group title={t('groupStandalone')} hint={t('groupStandaloneHint')} manual>
+          {STANDALONE_FIELDS.map(control)}
+        </Group>
+
+        <div className="kz-footer">
+          {state.saveFailed ? <p className="kz-failed" role="status">{t('saveFailed')}</p> : null}
+          <Button variant="ghost" size="sm" disabled={!state.dirty || state.saving} onClick={props.discard}>
+            {t('discard')}
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={!state.dirty || state.invalid || state.saving || !state.writable}
+            onClick={props.save}
+          >
+            {state.saving ? t('saving') : t('save')}
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }

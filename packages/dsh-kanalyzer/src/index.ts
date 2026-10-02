@@ -23,12 +23,23 @@ import { expandHome } from './core/install.ts'
 import { parseSkillFile } from './core/skill.ts'
 import { registerCommands } from './host/commands.ts'
 import { KanalyzerRuntime } from './host/runtime.ts'
-import { Config, KANALYZER_NS, type StatusWriter } from './host/settings.ts'
+import { Config, KANALYZER_NS, resolveConfig, type StatusWriter } from './host/settings.ts'
 import { registerTools } from './host/tools.ts'
 
 export type * from './api.ts'
 export { KanalyzerRuntime } from './host/runtime.ts'
 export { KANALYZER_NS } from './host/settings.ts'
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+     * Restated from `@deepseek-ai/cordis-plugin-loader` (a transitive dependency of DSH, not ours):
+     * emitted to the owning fiber after the loader commits an edit to this entry's `.volatile()`
+     * config fields. Identical signature, so the two declarations merge.
+     */
+    'loader/volatile-update'(paths: readonly (readonly string[])[]): void
+  }
+}
 
 export const name = 'dsh-kanalyzer'
 export const inject: string[] = []
@@ -43,14 +54,23 @@ const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
  * @param config - entry config (composition layer).
  */
 export function apply(ctx: Context, config: Config): void {
-  let source: () => Config = () => config
-  let settingsWrite: StatusWriter | undefined
+  // The loader hands over live `Volatile` references. Settings are resolved once and re-resolved
+  // after the loader commits a form edit (`loader/volatile-update`, below).
+  let resolved: Config | undefined
+  // Status written while no settings service could take it: keeps `status()` consumers current.
+  let memoryStatus: Partial<Config['status']> = {}
+  const source = (): Config => {
+    resolved ??= resolveConfig(config)
+    return { ...resolved, status: { ...resolved.status, ...memoryStatus } }
+  }
   let runtime: KanalyzerRuntime | undefined
 
   const writeStatus: StatusWriter = async (patch) => {
-    if (settingsWrite !== undefined) { await settingsWrite(patch); return }
-    // No settings service: keep the in-memory view current so status() consumers still see it.
-    config = { ...config, status: { ...config.status, ...patch } }
+    const settings = ctx.get('settings')
+    if (settings !== undefined) {
+      try { await settings.update(KANALYZER_NS, { status: patch }); return } catch { /* fall through to memory */ }
+    }
+    memoryStatus = { ...memoryStatus, ...patch }
   }
 
   // The only thing derived from the settings source is the persisted install status: moving
@@ -87,13 +107,15 @@ export function apply(ctx: Context, config: Config): void {
       .finally(() => { refreshing = false })
   }
 
+  // Settings (DSH ≥ 0.2): this entry's volatile fields are edited in place; the loader announces the
+  // change to the owning fiber.
+  ctx.on('loader/volatile-update', () => {
+    resolved = undefined
+    refreshInstallStatus()
+  })
+  // kanalyzer ships its own settings card, so the generic schema-generated page stays off.
   ctx.inject(['settings'], (sctx) => {
-    sctx.settings.installSection(ctx, KANALYZER_NS, Config, config, {
-      setSource: (current: () => Config) => { source = current },
-      onChange: refreshInstallStatus,
-    })
-    settingsWrite = patch => sctx.settings.update(KANALYZER_NS, { status: patch })
-    sctx.effect(() => () => { settingsWrite = undefined })
+    sctx.effect(() => sctx.settings.configure({ auto: false }, ctx.fiber))
   })
 
   ctx.plugin(KanalyzerRuntime, { config: () => source(), writeStatus, packageRoot: PACKAGE_ROOT })

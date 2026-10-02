@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-commands'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, type ContextFormed } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-skill'
@@ -51,12 +51,27 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     kanalyzer: KanalyzerService
   }
+  interface Events {
+    /**
+     * Restated from `@deepseek-ai/cordis-plugin-loader` (a transitive dependency of DSH, not ours):
+     * emitted to the owning fiber after the loader commits an edit to this entry's `.volatile()`
+     * config fields. Identical signature, so the two declarations merge.
+     */
+    'loader/volatile-update'(paths: readonly (readonly string[])[]): void
+  }
+}
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    /** pbfuzz's own procedure text and job notices (DSH ≥ 0.2: each producer declares its own source kind). */
+    pbfuzz: { kind: 'pbfuzz' } & ContextFormed
+  }
 }
 
 export const name = 'pbfuzz'
 export const inject = ['tools']
 
-/** Plugin config: the composition entry for the `pbfuzz` settings section. */
+/** Plugin config: the `pbfuzz` Loader entry (every leaf is a live `Volatile` reference at runtime). */
 export type Config = PbfuzzSettings
 
 /** Schemastery `Config`, identical to the settings section schema. */
@@ -71,9 +86,13 @@ const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
  * @param config - composition entry for the settings section.
  */
 export function apply(ctx: Context, config: Config): void {
-  const entry = resolveSettings(config)
+  // The loader hands over live `Volatile` references. Settings are resolved once and re-resolved
+  // after the loader commits a form edit (`loader/volatile-update`, below) — guards read them on
+  // every tool call, so they are not re-parsed per read.
+  let resolved: PbfuzzSettings | undefined
+  const current = (): PbfuzzSettings => (resolved ??= resolveSettings(config))
   const host = new PbfuzzHost(
-    () => entry,
+    current,
     { info: m => { ctx.logger.info(m) }, warn: m => { ctx.logger.warn(m) } },
     () => new Set(ctx.tools.schemas().map(s => s.name)),
     // PYTHONPATH=<engine dir> so `python -m pbfuzz_engine.rpc` runs without a pip install.
@@ -81,25 +100,31 @@ export function apply(ctx: Context, config: Config): void {
   )
   ctx.effect(() => () => { host.dispose() })
 
-  // Settings: host-level section; falls back to the composition entry without a provider.
+  const warnOnInconsistentSettings = (): void => {
+    const { tools } = current()
+    if (tools.deviationDetection && tools.staticAnalysis === 'off' && tools.tracer === 'off') {
+      ctx.logger.warn('pbfuzz: deviation detection needs the tracer; enable a tracer or turn deviation detection off')
+    }
+  }
+  warnOnInconsistentSettings()
+
+  // Settings (DSH ≥ 0.2): this entry's volatile fields are edited in place; the loader announces
+  // the change to the owning fiber instead of calling a plugin-supplied `onChange`.
+  ctx.on('loader/volatile-update', () => {
+    resolved = undefined
+    warnOnInconsistentSettings()
+    host.onSettingsChanged()
+  })
+  // pbfuzz ships its own settings card, so the generic schema-generated page stays off.
   ctx.inject(['settings'], (sctx) => {
-    sctx.settings.installSection(ctx, PBFUZZ_SETTINGS_NS, SettingsSchema, entry, {
-      setSource: (current: () => PbfuzzSettings) => { host.setSettingsSource(current) },
-      onChange: () => { host.onSettingsChanged() },
-      validate: (value: PbfuzzSettings) => {
-        if (value.tools.deviationDetection && value.tools.staticAnalysis === 'off' && value.tools.tracer === 'off') {
-          throw new Error('deviation detection needs the tracer; enable a tracer or turn deviation detection off')
-        }
-      },
-    })
+    sctx.effect(() => sctx.settings.configure({ auto: false }, ctx.fiber))
   })
 
-  // `SettingsProvider.update()` is a top-level method (ns-addressed, not tied to the
-  // `SettingsScope` `installSection()` keeps to itself), so this needs no reference to the
-  // `sctx` the block above captured — a lazy `ctx.get('settings')` at call time (well after
-  // `apply()` returns, by which point the settings service is loaded if composed at all) reaches
-  // it directly. `update()` is a merge patch: `{status:{envSelfcheck: cache}}` leaves every
-  // other settings field untouched, so no read-modify-write race with a concurrent user edit.
+  // `settings.update()` is ns-addressed (the ns is this plugin's Loader entry id, `pbfuzz`), so a
+  // lazy `ctx.get('settings')` at call time (well after `apply()` returns, by which point the
+  // settings service is loaded if composed at all) reaches it directly. `update()` is a merge
+  // patch: `{status:{envSelfcheck: cache}}` leaves every other settings field untouched, so no
+  // read-modify-write race with a concurrent user edit.
   const writeEnvSelfcheckCache = (cache: EnvSelfcheckCache): void => {
     const settings = ctx.get('settings')
     if (settings === undefined) return // no settings provider composed; nothing to persist into.
@@ -116,6 +141,7 @@ export function apply(ctx: Context, config: Config): void {
   // effect on the first step).
   ctx.on('agent/created', ({ agent }) => {
     try { host.refresh(agent as AgentLike) } catch (error) { ctx.logger.warn(`pbfuzz: tool visibility for a new agent failed: ${(error as Error).message}`) }
+    return undefined
   })
 
   const skills = loadSkills(join(PACKAGE_ROOT, 'skills'))
@@ -126,7 +152,7 @@ export function apply(ctx: Context, config: Config): void {
   /** pbfuzz's own procedure text, as the collapsed "Context injection · pbfuzz" row. */
   const instructionMessage = (text: string): ReturnType<typeof createUserMessage> => createUserMessage({
     content: [{ type: 'text', text }],
-    source: { kind: 'plugin', plugin: 'pbfuzz', form: 'instructions' },
+    source: { kind: 'pbfuzz', form: 'instructions' },
   })
 
   ctx.inject(['commands'], (cctx) => {

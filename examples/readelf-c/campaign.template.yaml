@@ -1,0 +1,38 @@
+# Confirmed campaign for readelf.cpp — run.sh fills in @DIR@ (this directory) and hands it to
+# `/pbfuzz run`. The bug is given the way a crash report would give it: a location and a condition.
+version: 1
+id: readelf-c
+confirmed: true
+target:
+  repo: "@DIR@"
+  language: cpp
+bug:
+  targets:
+  - location: readelf.cpp:93
+    condition: >-
+      header.e_ident[EI_CLASS] == ELFCLASS64 && header.e_ident[EI_DATA] == ELFDATA2MSB &&
+      header.e_ident[EI_VERSION] == EV_CURRENT &&
+      (entry == 0x400000 || entry == 0x8048000 || header.e_entry == 0x400000 || header.e_entry == 0x8048000)
+build:
+  cmd: ./build.sh
+entry:
+  kind: executable
+  run_cmd: ./readelf @@
+  input_channel: file
+  cwd: "@DIR@"
+oracle:                       # readelf.cpp already prints both markers, so no canary is needed
+  mode: preexisting
+  reached_pattern: bug location reached
+  triggered_pattern: bug location triggered
+analysis:
+  static:
+    enabled: false            # kanalyzer is optional; PIER runs on gdb traces alone
+    disabled_reason: kanalyzer not installed
+  corpus:
+    enabled: true
+    seeds_dir: "@DIR@/seeds"
+  deviation:
+    enabled: true
+    mode: target_only
+output:
+  dir: "@DIR@/.pbfuzz/readelf-c"

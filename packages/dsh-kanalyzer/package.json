@@ -33,7 +33,7 @@
     "client": {
       "platform": "web",
       "inject": [
-        "@deepseek-ai/dsh-client-ui-settings-plugins",
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-renderer",
@@ -52,17 +52,17 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": ">=4.0.1 <5.0.0",
-    "@deepseek-ai/dsh-agent": ">=0.1.5-rc.1 <0.2.0",
-    "@deepseek-ai/dsh-commands": ">=0.1.5-rc.1 <0.2.0",
-    "@deepseek-ai/dsh-jobs": ">=0.1.5-rc.1 <0.2.0",
-    "@deepseek-ai/dsh-llm": ">=0.1.5-rc.1 <0.2.0",
-    "@deepseek-ai/dsh-settings": ">=0.1.5-rc.1 <0.2.0",
-    "@deepseek-ai/dsh-skill": ">=0.1.5-rc.1 <0.2.0",
-    "@deepseek-ai/dsh-tools": ">=0.1.5-rc.1 <0.2.0"
+    "@deepseek-ai/cordis": ">=4.0.4 <5.0.0",
+    "@deepseek-ai/dsh-agent": ">=0.2.0-rc.2 <0.3.0",
+    "@deepseek-ai/dsh-commands": ">=0.2.0-rc.2 <0.3.0",
+    "@deepseek-ai/dsh-jobs": ">=0.2.0-rc.2 <0.3.0",
+    "@deepseek-ai/dsh-llm": ">=0.2.0-rc.2 <0.3.0",
+    "@deepseek-ai/dsh-settings": ">=0.2.0-rc.2 <0.3.0",
+    "@deepseek-ai/dsh-skill": ">=0.2.0-rc.2 <0.3.0",
+    "@deepseek-ai/dsh-tools": ">=0.2.0-rc.2 <0.3.0"
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "^3.18.2"
+    "@deepseek-ai/schemastery": "^3.18.4"
   },
   "devDependencies": {
     "@types/node": "^22.0.0"

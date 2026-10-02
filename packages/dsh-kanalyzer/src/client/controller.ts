@@ -2,7 +2,7 @@
  * The kanalyzer card's controller: a staged form over the nested `kanalyzer`
  * settings namespace, plus the Build / Self-test / Refresh actions.
  *
- * It is DOM- and service-free. It reads and writes through a `SettingsScope`
+ * It is DOM- and service-free. It reads and writes through a `ConfigForm`
  * and reaches the rest of DSH through the narrow {@link KanalyzerCardHost}
  * adapter, which `index.ts` builds from `ctx`. That keeps the logic unit-testable
  * without a DSH runtime.
@@ -11,7 +11,7 @@
  * addresses a top-level key and every field here is nested.
  */
 
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { KanalyzerSettings } from '../generated/contracts.ts'
 import {
   ALL_FIELDS, getAt, hasAt, jsonEqual, parseDraft, toDraft,
@@ -164,7 +164,7 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-/** Bridges the `kanalyzer` scope and the host adapter onto the card. */
+/** Bridges the `kanalyzer` config form and the host adapter onto the card. */
 export class KanalyzerCardController {
   private readonly staged = new Map<string, Staged>()
   private readonly listeners = new Set<() => void>()
@@ -187,11 +187,11 @@ export class KanalyzerCardController {
   private disposed = false
 
   /**
-   * @param scope - the bound `kanalyzer` settings scope.
+   * @param scope - the `kanalyzer` entry's config form (`ctx.configForms.get('kanalyzer')`).
    * @param host - the DSH adapter.
    */
   constructor(
-    private readonly scope: SettingsScope<KanalyzerSettings>,
+    private readonly scope: ConfigForm<KanalyzerSettings>,
     private readonly host: KanalyzerCardHost,
   ) {
     this.snapshot = this.project()

@@ -22,7 +22,7 @@ your DeepSeek API key. Use the DSH version these plugins are verified against (`
 check that it works:
 
 ```sh
-npx @deepseek-ai/dsh@0.1.5-rc.1 web
+npx @deepseek-ai/dsh@0.2.0-rc.2 web
 ```
 
 **3. Install pbfuzz**
@@ -32,7 +32,7 @@ npx @deepseek-ai/dsh@0.1.5-rc.1 web
 ```
 
 That builds the plugins and the Python engine and adds them to DSH. Restart
-`npx @deepseek-ai/dsh@0.1.5-rc.1 web` and you're done.
+`npx @deepseek-ai/dsh@0.2.0-rc.2 web` and you're done.
 
 | Script | Does |
 |---|---|
@@ -63,7 +63,8 @@ Useful commands inside a session:
 | `/pbfuzz selfcheck` | run the environment self-check (LLVM, tracers, Python) now |
 
 Settings (tracer, budget caps, oracle defaults, which auxiliary analyses are on) live under
-**Settings → pbfuzz** in the web UI, or `pbfuzz.*` in `~/.dsh/settings.yaml`. Three budgets —
+**Plugins → @pbfuzz/dsh-pbfuzz → Configure** in the web UI, or under the `pbfuzz` entry's `config:` in
+your profile's `cordis.patch.yml`. Three budgets —
 `budget.maxPierRounds`, `budget.campaignWallTimeMin`, `budget.maxConsecutiveForcedContinues` — are
 the only brake on an unattended run; reaching one stops the campaign for real (`phase: STOPPED`).
 
@@ -90,7 +91,7 @@ packages/dsh-kanalyzer/  the static-analysis plugin
 engine/                  the Python fuzzing sidecar (pbfuzz_engine/)
 contracts/               JSON Schemas shared by both plugins and the engine (pnpm codegen)
 examples/                worked targets: C/C++, Python (atheris), Java (Jazzer)
-docs/                    verification records
+docs/                    DSH upgrade playbook, verification records
 ```
 
 ## Development
@@ -105,6 +106,13 @@ pnpm run codegen:check       # contracts/ generated files are up to date
 
 `pnpm run codegen` regenerates the TypeScript/Python types under `contracts/` after any schema
 change; commit the generated diff together with the schema.
+
+### DeepSeek Harness compatibility
+
+DSH changes its plugin APIs between releases, so a [weekly workflow](.github/workflows/dsh-compat.yml) checks
+pbfuzz against the newest DSH and opens an issue (plus a fix PR, if `ANTHROPIC_API_KEY` is set) when it breaks.
+Reproduce or check by hand with `scripts/compat-check.sh [version | --current]`; what changed in 0.2 and how to
+fix the next break is in [`docs/dsh-upgrade.md`](docs/dsh-upgrade.md).
 
 ## License
 

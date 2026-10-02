@@ -6,7 +6,7 @@
 #   DEEPSEEK_API_KEY=... ./run-campaign.sh magma-work/lua/campaigns/LUA001.campaign.yaml
 #
 # PROFILE (default: headless) must have the plugin installed: ./install.sh --profile headless.
-# Budgets (pbfuzz.budget.* in ~/.dsh/settings.yaml) are the only brake on an unattended run.
+# Budgets (`budget.*` under the pbfuzz entry of the profile's cordis.patch.yml) are the only brake on an unattended run.
 #
 # MAGMA_ROOT, if set, also hides this target's bug patches in the *source* Magma checkout for the
 # session's duration (restored on exit, any outcome). build-target.sh already deletes them from

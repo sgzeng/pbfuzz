@@ -27,10 +27,17 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent'
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
-import { createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, type ContextFormed, type UserMessage } from '@deepseek-ai/dsh-llm'
 import { homedir } from 'node:os'
 import { expandHome } from '../core/install.ts'
 import type { Config } from './settings.ts'
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    /** Prompts the `/kanalyzer` command hands the agent (DSH ≥ 0.2: each producer declares its own source kind). */
+    kanalyzer: { kind: 'kanalyzer' } & ContextFormed
+  }
+}
 
 const USAGE = [
   'Usage:',
@@ -218,7 +225,7 @@ export function registerCommands(ctx: Context, config: () => Config, packageRoot
   const handOff = (inv: CommandInvocation, text: string, note: string): CommandResult => {
     inv.agent.steer(createUserMessage({
       content: [{ type: 'text', text }],
-      source: { kind: 'plugin', plugin: 'dsh-kanalyzer' },
+      source: { kind: 'kanalyzer' },
     }))
     return { kind: 'success', text: note }
   }
@@ -233,7 +240,7 @@ export function registerCommands(ctx: Context, config: () => Config, packageRoot
         case 'build':
           await inv.agent.followup(createUserMessage({
             content: [{ type: 'text', text: buildPrompt(config(), packageRoot) }],
-            source: { kind: 'plugin', plugin: 'dsh-kanalyzer' },
+            source: { kind: 'kanalyzer' },
           }))
           return { kind: 'success', text: 'Build started in this session — the agent follows the kanalyzer-build skill.' }
         case 'install-deps':
@@ -241,7 +248,7 @@ export function registerCommands(ctx: Context, config: () => Config, packageRoot
           // steering whatever the current turn is doing.
           await inv.agent.followup(createUserMessage({
             content: [{ type: 'text', text: installDepsPrompt() }],
-            source: { kind: 'plugin', plugin: 'dsh-kanalyzer' },
+            source: { kind: 'kanalyzer' },
           }))
           return { kind: 'success', text: 'Installing wllvm in this session — the agent follows the kanalyzer-wllvm skill.' }
         case 'doctor': {
@@ -303,7 +310,7 @@ export function registerCommands(ctx: Context, config: () => Config, packageRoot
   // this into swallowing the original message; that is not the bug.
   ctx.on('agent/inbox/inserted', ({ agent, message }) => {
     // The guard that keeps this from ever re-entering on its own output: `handOff` above always
-    // sources its followups as `{ kind: 'plugin', plugin: 'dsh-kanalyzer' }`, never `'user'`, so a
+    // sources its followups as `{ kind: 'kanalyzer' }`, never `'user'`, so a
     // dispatch triggered from here can never trigger this listener again.
     if (message.source.kind !== 'user') return
     const line = kanalyzerCommandLine(textOf(message))

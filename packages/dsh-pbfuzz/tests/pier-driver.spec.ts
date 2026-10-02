@@ -10,18 +10,25 @@ import { settings } from './fixtures.ts'
 
 // ---- fakes ----------------------------------------------------------------
 
+/** DSH >= 0.2 job registry surface pbfuzz uses: `events.subscribe()` and `list(sessionId)`. */
 interface FakeJobs {
-  onJobDone(cb: (snapshot: unknown, owner: unknown) => void): () => void
-  list(agent: unknown): { kind: string; status: string }[]
-  fire(snapshot: unknown, owner: unknown): void
+  events: { subscribe(filter: unknown, listener: (event: unknown) => void): () => void }
+  list(sessionId: unknown): { kind: string; status: string }[]
+  /** Deliver one registry event to the subscriber (synchronously, like the real registry). */
+  fire(event: unknown): void
 }
 function fakeJobs(running: { kind: string; status: string }[] = []): FakeJobs {
-  let doneCb: ((snapshot: unknown, owner: unknown) => void) | undefined
+  let listener: ((event: unknown) => void) | undefined
   return {
-    onJobDone: (cb) => { doneCb = cb; return () => {} },
+    events: { subscribe: (_filter, cb) => { listener = cb; return () => {} } },
     list: () => running,
-    fire: (snapshot, owner) => { doneCb?.(snapshot, owner) },
+    fire: (event) => { listener?.(event) },
   }
+}
+
+/** A `settled` registry event for a job owned by `owner` (a session id). */
+function settled(kind: string, owner: string | undefined, extra: { awaited?: boolean; cause?: string } = {}): unknown {
+  return { type: 'settled', job: { id: `${kind}-1`, kind, owner }, cause: extra.cause ?? 'producer', awaited: extra.awaited ?? false }
 }
 
 interface FakeCommands {
@@ -57,9 +64,15 @@ function deferredCommands(): DeferredCommands {
 }
 
 type Listener = (payload: never) => unknown
-function fakeCtx(jobs?: FakeJobs, commands?: FakeCommands): { ctx: unknown; emit(event: string, payload: unknown): void; warnings: string[] } {
+function fakeCtx(jobs?: FakeJobs, commands?: FakeCommands, agents: Record<string, unknown> = {}): { ctx: unknown; emit(event: string, payload: unknown): void; warnings: string[] } {
   const listeners = new Map<string, Listener[]>()
   const warnings: string[] = []
+  const get = (name: string): unknown => {
+    if (name === 'jobs') return jobs
+    if (name === 'commands') return commands
+    if (name === 'agents') return { get: (id: string) => agents[id] }
+    return undefined
+  }
   const ctx = {
     on(event: string, cb: Listener) {
       const arr = listeners.get(event) ?? []
@@ -67,13 +80,9 @@ function fakeCtx(jobs?: FakeJobs, commands?: FakeCommands): { ctx: unknown; emit
       listeners.set(event, arr)
       return () => {}
     },
-    get(name: string) {
-      if (name === 'jobs') return jobs
-      if (name === 'commands') return commands
-      return undefined
-    },
+    get,
     inject(deps: string[], cb: (jctx: unknown) => void) {
-      if (deps[0] === 'jobs' && jobs !== undefined) cb({ jobs })
+      if (deps[0] === 'jobs' && jobs !== undefined) cb({ jobs, get, effect: (fn: () => unknown) => { fn() } })
     },
     logger: { info() {}, warn: (msg: string) => { warnings.push(msg) } },
   }
@@ -275,33 +284,55 @@ describe('installPierDriver: consecutive-forced-continue cap', () => {
 })
 
 describe('installPierDriver: job-done wakeup fallback', () => {
-  it('follows up an idle, unreported, still-active owner', () => {
+  it('follows up an idle, still-active owner once its pbfuzz_fuzz job settles', async () => {
     const { root } = workspace('EXECUTE')
     const host = newHost()
     const jobs = fakeJobs()
-    const fake = fakeCtx(jobs)
-    installPierDriver(fake.ctx as never, host)
     const { agent, followedUp } = fakeAgent(root, 'idle')
-    jobs.fire({ kind: 'pbfuzz_fuzz', reported: false }, agent)
+    const fake = fakeCtx(jobs, undefined, { [(agent as { id: string }).id]: agent })
+    installPierDriver(fake.ctx as never, host)
+    jobs.fire(settled('pbfuzz_fuzz', (agent as { id: string }).id))
+    await flushMicrotasks()
     expect(followedUp).toHaveLength(1)
-    const message = followedUp[0] as { source: { form: string; summary: string } }
+    const message = followedUp[0] as { source: { kind: string; form: string; summary: string } }
+    expect(message.source.kind).toBe('pbfuzz')
     expect(message.source.form).toBe('notice')
   })
 
-  it('ignores a non-pbfuzz_fuzz job, an unowned job, an already-reported one, or a non-idle owner', () => {
+  it('ignores a non-pbfuzz_fuzz job, an unowned job, a collected (awaited) one, a teardown, or a non-idle owner', async () => {
     const { root } = workspace('EXECUTE')
     const host = newHost()
     const jobs = fakeJobs()
-    const fake = fakeCtx(jobs)
-    installPierDriver(fake.ctx as never, host)
     const { agent: idleAgent, followedUp: f1 } = fakeAgent(root, 'idle')
-    const { agent: runningAgent, followedUp: f2 } = fakeAgent(root, 'running')
-    jobs.fire({ kind: 'bash', reported: false }, idleAgent)
-    jobs.fire({ kind: 'pbfuzz_fuzz', reported: false }, undefined)
-    jobs.fire({ kind: 'pbfuzz_fuzz', reported: true }, idleAgent)
-    jobs.fire({ kind: 'pbfuzz_fuzz', reported: false }, runningAgent)
+    const { agent: runningAgent, followedUp: f2 } = fakeAgent(root.concat('/other'), 'running')
+    const idleId = (idleAgent as { id: string }).id
+    const runningId = (runningAgent as { id: string }).id
+    const fake = fakeCtx(jobs, undefined, { [idleId]: idleAgent, [runningId]: runningAgent })
+    installPierDriver(fake.ctx as never, host)
+    jobs.fire(settled('bash', idleId))
+    jobs.fire(settled('pbfuzz_fuzz', undefined))
+    jobs.fire(settled('pbfuzz_fuzz', idleId, { awaited: true }))
+    jobs.fire(settled('pbfuzz_fuzz', idleId, { cause: 'teardown' }))
+    jobs.fire({ type: 'registered', job: { id: 'pbfuzz_fuzz-1', kind: 'pbfuzz_fuzz', owner: idleId } })
+    jobs.fire(settled('pbfuzz_fuzz', runningId))
+    await flushMicrotasks()
     expect(f1).toHaveLength(0)
     expect(f2).toHaveLength(0)
+  })
+
+  it('does not double-nudge an owner that dsh-tool-jobs already woke for the same completion', async () => {
+    const { root } = workspace('EXECUTE')
+    const host = newHost()
+    const jobs = fakeJobs()
+    const { agent, followedUp } = fakeAgent(root, 'idle')
+    const id = (agent as { id: string }).id
+    const fake = fakeCtx(jobs, undefined, { [id]: agent })
+    installPierDriver(fake.ctx as never, host)
+    jobs.fire(settled('pbfuzz_fuzz', id))
+    // dsh-tool-jobs' own listener runs in the same synchronous dispatch and wakes the idle owner.
+    ;(agent as { status: string }).status = 'running'
+    await flushMicrotasks()
+    expect(followedUp).toHaveLength(0)
   })
 })
 

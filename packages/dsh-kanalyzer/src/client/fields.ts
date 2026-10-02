@@ -1,8 +1,8 @@
 /**
  * The editable fields of the `kanalyzer` settings namespace, exactly as
  * `contracts/kanalyzer-settings.schema.json` declares them. Every field is a
- * nested path, so writes go through `SettingsScope.mutate()` path ops —
- * `SettingsScope.set(field)` only addresses a top-level key.
+ * nested path, so writes go through `ConfigForm.mutate()` path ops —
+ * `ConfigForm.set(field)` only addresses a top-level key.
  *
  * `status.*` is deliberately absent: the host writes it and the card only reads it.
  */

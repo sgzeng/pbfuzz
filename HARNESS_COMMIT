@@ -1,8 +1,9 @@
-# The deepseek-harness commit these plugins are developed and verified against.
-# Bump only together with a compat CI run.
-DSH_COMMIT=183f08e9c6dde7e36cd2318eaee70b0da08fb35e
-DSH_VERSION=0.1.5-rc.1
-DSH_PEER_RANGE=>=0.1.5-rc.1 <0.2.0
+# The DeepSeek Harness release these plugins are developed and verified against.
+# `node scripts/bump-dsh.mjs [version]` re-pins everything below (and the package.json /
+# pnpm-workspace.yaml pins) in one go; .github/workflows/dsh-compat.yml runs it weekly against npm's
+# latest. Bump only together with a green compat run.
+DSH_VERSION=0.2.0-rc.2
+DSH_PEER_RANGE=>=0.2.0-rc.2 <0.3.0
 # cordis and schemastery are versioned independently of DSH — do NOT give them DSH_PEER_RANGE.
-CORDIS_PEER_RANGE=>=4.0.1 <5.0.0
-SCHEMASTERY_RANGE=^3.18.2
+CORDIS_PEER_RANGE=>=4.0.4 <5.0.0
+SCHEMASTERY_RANGE=^3.18.4

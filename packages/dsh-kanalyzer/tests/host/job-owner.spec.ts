@@ -23,7 +23,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RunResult } from '../../src/host/exec.ts'
 import { KanalyzerRuntime } from '../../src/host/runtime.ts'
-import { Config } from '../../src/host/settings.ts'
+import { resolveConfig } from '../../src/host/settings.ts'
 
 const { runMock } = vi.hoisted(() => ({ runMock: vi.fn() }))
 
@@ -62,7 +62,7 @@ describe('asJob() owner + signal (Task 1)', () => {
     const llvmPrefix = join(tmp, 'llvm')
     mkdirSync(join(llvmPrefix, 'bin'), { recursive: true })
     writeFileSync(join(llvmPrefix, 'bin', 'clang'), '')
-    const base = Config()
+    const base = resolveConfig()
     const cfg = { ...base, install: { ...base.install, llvmPrefix, installDir: join(tmp, 'no-kanalyzer-install') } }
     const ctx = new Context()
     jobs = new RecordingJobs(ctx)
@@ -73,7 +73,7 @@ describe('asJob() owner + signal (Task 1)', () => {
     rmSync(tmp, { recursive: true, force: true })
   })
 
-  it('registers the job under the caller\'s agent when one is threaded through', async () => {
+  it('registers the job under the caller\'s session id (DSH >= 0.2 JobSpec.owner) when one is threaded through', async () => {
     const repo = join(tmp, 'repo')
     mkdirSync(repo, { recursive: true })
     runMock.mockImplementation(async (): Promise<RunResult> => okResult({ stdout: 'nothing built\n' }))
@@ -84,7 +84,7 @@ describe('asJob() owner + signal (Task 1)', () => {
     await runtime.prepare({ repo, buildCmd: 'true', mode: 'lto' }, { agent, signal: new AbortController().signal }).catch(() => {})
 
     expect(jobs.started).toHaveLength(1)
-    expect(jobs.started[0]).toMatchObject({ kind: 'kanalyzer', owner: agent })
+    expect(jobs.started[0]).toMatchObject({ kind: 'kanalyzer', owner: agent.id })
   })
 
   it('registers an unowned job (no `owner` key at all) when no caller is threaded through', async () => {

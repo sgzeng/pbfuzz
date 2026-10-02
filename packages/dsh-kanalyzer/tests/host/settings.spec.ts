@@ -15,9 +15,20 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { KanalyzerRuntime } from '../../src/host/runtime.ts'
-import { Config, optionDefaults, type StatusWriter } from '../../src/host/settings.ts'
+import { Config, resolveConfig, optionDefaults, type StatusWriter } from '../../src/host/settings.ts'
 
 describe('kanalyzer settings (src/host/settings.ts)', () => {
+  it('resolveConfig reads the live Volatile references the DSH >= 0.2 loader hands the plugin', () => {
+    // The loader parses the entry through `Config`; every leaf comes back as a `Volatile<T>` whose
+    // `.get()` is the current snapshot. A plugin must never see (or compare) the reference itself.
+    const parsed = Config({ install: { branch: 'custom-branch' } } as unknown as Parameters<typeof Config>[0])
+    expect(typeof (parsed.install.branch as unknown as { get: unknown }).get).toBe('function')
+    const cfg = resolveConfig(parsed)
+    expect(cfg.install.branch).toBe('custom-branch')
+    expect(cfg.install.installDir).toBe('~/.dsh/kanalyzer')
+    expect(cfg.status.installed).toBe(false)
+  })
+
   it('schemastery fills every optional field of a partial config with the documented defaults', () => {
     // `Config`'s .d.ts call signature wants a fully-shaped input, but schemastery itself defaults
     // a genuinely partial object fine at runtime — this is exactly how a real settings document
@@ -25,7 +36,7 @@ describe('kanalyzer settings (src/host/settings.ts)', () => {
     // how `acceptance-run/work/L1-kanalyzer/driver.mjs` builds a runtime's config. Exercise that
     // real behavior directly; the cast only works around the narrower static type.
     const partial = { install: { branch: 'custom-branch' } } as unknown as Parameters<typeof Config>[0]
-    const cfg = Config(partial)
+    const cfg = resolveConfig(partial)
     expect(cfg.install.branch).toBe('custom-branch')
     expect(cfg.install.installDir).toBe('~/.dsh/kanalyzer')
     expect(cfg.install.repoUrl).toBe('https://github.com/sgzeng/kernel-analyzer.git')
@@ -69,7 +80,7 @@ describe('kanalyzer settings (src/host/settings.ts)', () => {
     it('a doctor() failure patch, written through StatusWriter, reads back out of config()', async () => {
       // A mutable settings store plus the same read()/write() shape `src/index.ts` falls back to
       // when no `dsh-settings` service is mounted (`config = { ...config, status: { ...patch } }`).
-      const base = Config()
+      const base = resolveConfig()
       let store = { ...base, install: { ...base.install, installDir: join(tmp, 'empty-install') } }
       const writeStatus: StatusWriter = async (patch) => {
         store = { ...store, status: { ...store.status, ...patch } }

@@ -14,7 +14,8 @@ const CSS = `
 .kz-headtext{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
 .kz-name{font-size:15px;font-weight:600;line-height:1.4;color:var(--dsw-alias-label-primary)}
 .kz-desc{font-size:13px;line-height:1.5;color:var(--dsw-alias-label-secondary)}
-.kz-body{padding:0 16px 16px;display:flex;flex-direction:column;gap:16px}
+.kz-tags{display:flex;gap:8px;flex-wrap:wrap}
+.kz-body{padding:16px;display:flex;flex-direction:column;gap:16px}
 .kz-note{margin:0;padding:10px 12px;border-radius:10px;font-size:12px;line-height:1.5;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary)}
 .kz-note[data-tone="warn"]{color:var(--dsw-alias-label-error)}
 .kz-group{border:.5px solid var(--dsw-alias-border-l2);border-radius:12px;padding:12px 14px}

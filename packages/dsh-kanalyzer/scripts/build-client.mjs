@@ -140,7 +140,7 @@ try {
 }
 if (exported === null || typeof exported !== 'object') fail('factory did not return an exports object')
 if (typeof exported.apply !== 'function') fail('exports.apply is not a function')
-if (!Array.isArray(exported.inject) || !exported.inject.includes('settingsScope')) fail('exports.inject is missing or incomplete')
+if (!Array.isArray(exported.inject) || !exported.inject.includes('configForms')) fail('exports.inject is missing or incomplete')
 
 // 4. Statically: every literal require in the file names a platform module.
 for (const m of out.matchAll(/\brequire\(\s*["']([^"']+)["']\s*\)/g)) {

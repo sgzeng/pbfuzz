@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RunResult } from '../../src/host/exec.ts'
 import { KanalyzerRuntime } from '../../src/host/runtime.ts'
-import { Config } from '../../src/host/settings.ts'
+import { resolveConfig } from '../../src/host/settings.ts'
 
 const { runMock } = vi.hoisted(() => ({ runMock: vi.fn() }))
 
@@ -61,7 +61,7 @@ describe('prepare(): LTO build that drops LDFLAGS produces no bitcode', () => {
       throw new Error(`unexpected run(): ${command}`)
     })
 
-    const base = Config()
+    const base = resolveConfig()
     const cfg = { ...base, install: { ...base.install, llvmPrefix, installDir: join(tmp, 'no-kanalyzer-install') } }
     const runtime = new KanalyzerRuntime(new Context(), {
       config: () => cfg,

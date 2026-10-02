@@ -1,8 +1,8 @@
 /**
- * dsh-kanalyzer, browser half: the kanalyzer settings card in the
- * `settings.plugin.item` slot, keyed on the `kanalyzer` namespace.
+ * dsh-kanalyzer, browser half: the kanalyzer settings page (DSH >= 0.2: the Plugins page's
+ * `plugins.row.config` slot, keyed `@pbfuzz/dsh-kanalyzer#kanalyzer`).
  *
- * The card renders only while the Host serves that namespace. It adds no Host-side
+ * The page renders only while the Host serves the `kanalyzer` namespace. It adds no Host-side
  * surface of its own: Build and Self-test dispatch the `/kanalyzer build` and
  * `/kanalyzer doctor` commands the Host half registers, and results come back through
  * the `status.*` fields that the Host writes with `settings.update()`.
@@ -13,12 +13,12 @@
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-// Type-only Context merges: ctx.locale, ctx.slots, ctx.settingsScope, ctx.remote, ctx.sessions,
-// and the settings.plugin.item SlotMap entry.
+// Type-only Context merges: ctx.locale, ctx.slots, ctx.configForms, ctx.remote, ctx.sessions,
+// and the plugins.row.config SlotMap entry.
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
+import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { KanalyzerSettings } from '../generated/contracts.ts'
@@ -40,9 +40,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
+/** The bundle this client half ships in and the row id its `cordis.patch.yml` declares (the Plugins page keys on both). */
+const BUNDLE = '@pbfuzz/dsh-kanalyzer'
+const ROW = 'kanalyzer'
+
 /** Required services (cordis fiber inject). */
 export const inject = [
-  'slots', 'locale', 'remote', 'remote.session', 'remote.commands', 'remote.settings', 'sessions', 'settingsScope',
+  'slots', 'locale', 'remote', 'remote.session', 'remote.commands', 'remote.settings', 'sessions', 'configForms',
 ]
 
 type SessionIdArg = Parameters<ClientContext['sessions']['open']>[0]
@@ -66,20 +70,20 @@ function hostOf(ctx: ClientContext): KanalyzerCardHost {
     },
     openSession: (sessionId) => { ctx.sessions.open(sessionId as SessionIdArg) },
     // The Host has no push channel for status: re-read the document and fold
-    // our namespace's view into the shared mirror every scope derives from.
+    // our namespace's view into the shared mirror every form derives from.
     reloadSettings: async () => {
       const response = await ctx.remote.settings.describe()
       if (!response.ok) return false
       const view = response.value.namespaces.find(candidate => candidate.ns === KANALYZER_NS)
       if (view === undefined) return false
-      ctx.settingsScope.describe().acceptView(view)
+      ctx.configForms.describe().acceptView(view)
       return true
     },
   }
 }
 
 /**
- * Mount the kanalyzer settings card.
+ * Mount the kanalyzer settings page.
  * @param ctx - the browser plugin context.
  */
 export function apply(ctx: ClientContext): void {
@@ -87,14 +91,14 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => installStyles(), 'dsh-kanalyzer: card styles')
 
   const card = new KanalyzerCardController(
-    ctx.settingsScope.bind<KanalyzerSettings>({ namespace: KANALYZER_NS }),
+    ctx.configForms.get<KanalyzerSettings>(KANALYZER_NS),
     hostOf(ctx),
   )
   ctx.effect(() => () => { card.dispose() }, 'dsh-kanalyzer: card controller')
 
-  ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
-    name: 'settings.plugin.item',
-    key: KANALYZER_NS,
+  ctx.slots.inject('plugins.row.config', () => ctx.slots.register({
+    name: 'plugins.row.config',
+    key: `${BUNDLE}#${ROW}`,
     locale: LOCALE_NS,
     inject: () => card.inject(),
   }, KanalyzerCard))

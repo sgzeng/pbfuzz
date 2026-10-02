@@ -16,6 +16,13 @@ import { ENGINE_CANCELLED, finishFuzz } from '../src/tools.ts'
 import { settings } from './fixtures.ts'
 import { captureTools, fakeExec } from './tool-harness.ts'
 
+/** The producer face DSH >= 0.2 hands `JobSpec.run()`; `append()` is how a producer feeds the output ring. */
+interface FakeJobHandle { id: string; append(text: string, options?: unknown): void; updateProgress(line: string): void }
+function fakeJobHandle(): { handle: FakeJobHandle; appended: string[] } {
+  const appended: string[] = []
+  return { appended, handle: { id: 'pbfuzz_fuzz-1', append: (text) => { appended.push(text) }, updateProgress() {} } }
+}
+
 function agentIn(cwd: string): AgentLike {
   return { id: `agent:${cwd}`, session: { header: { cwd } }, ctx: { tools: { restrict: () => () => {} } } }
 }
@@ -308,11 +315,12 @@ describe('pbfuzz_fuzz tool', () => {
       throw new Error(`unexpected call: ${method}`)
     })
     vi.spyOn(host.engine, 'onProgress').mockReturnValue(() => {})
-    const started: { kind: string; label: string; owner?: unknown; run(): { done: Promise<unknown> } }[] = []
+    type Spec = { kind: string; label: string; owner?: unknown; run(job: FakeJobHandle): { done: Promise<unknown> } }
+    const started: Spec[] = []
     const jobs = {
-      start: (spec: { kind: string; label: string; owner?: unknown; run(): { done: Promise<unknown> } }) => {
+      start: (spec: Spec) => {
         started.push(spec)
-        spec.run() // exercise the producer closure the way the real registry would
+        spec.run(fakeJobHandle().handle) // exercise the producer closure the way the real registry would
         return 'pbfuzz_fuzz-1'
       },
     }
@@ -322,7 +330,8 @@ describe('pbfuzz_fuzz tool', () => {
     expect(result.kind).toBe('background')
     expect(result.jobId).toBe('pbfuzz_fuzz-1')
     expect(started).toHaveLength(1)
-    expect(started[0]!.owner).toBe(agent)
+    // DSH >= 0.2: a job is owned by a session id, not by the Agent object.
+    expect(started[0]!.owner).toBe(agent.id)
     // The tool call itself already moved IMPLEMENT->EXECUTE before starting the job.
     expect(host.state(active)?.phase).toBe('EXECUTE')
 
@@ -332,9 +341,9 @@ describe('pbfuzz_fuzz tool', () => {
   })
 
   it('a finished background job states what the round found — in its detail (which the completion notice quotes) and in job_output', async () => {
-    // session ea916c42: the job's `readOutput` shadowed its final `output`, so job_output could
-    // never return the result, and the notice carried only counts. The model spent five steps
-    // polling and then reading metrics.json / crashes/ / iterations.jsonl by hand.
+    // session ea916c42: the job's output shadowed its final result, so job_output could never
+    // return it, and the notice carried only counts. The model spent five steps polling and then
+    // reading metrics.json / crashes/ / iterations.jsonl by hand.
     const host = newHost({ execution: { fuzzBackground: true } })
     const { agent } = workspace()
     const active = implementPhaseCampaign(host, agent)
@@ -344,9 +353,11 @@ describe('pbfuzz_fuzz tool', () => {
       if (method === 'fuzz.run') return new Promise(resolve => { resolveFuzzRun = resolve })
       throw new Error(`unexpected call: ${method}`)
     })
-    vi.spyOn(host.engine, 'onProgress').mockReturnValue(() => {})
-    let producer!: { done: Promise<{ detail: string }>; readOutput(): string }
-    const jobs = { start: (spec: { run(): typeof producer }) => { producer = spec.run(); return 'pbfuzz_fuzz-1' } }
+    let progress!: (n: { method: string; params: unknown }) => void
+    vi.spyOn(host.engine, 'onProgress').mockImplementation((cb) => { progress = cb as typeof progress; return () => {} })
+    let producer!: { done: Promise<{ detail: string }> }
+    const output = fakeJobHandle()
+    const jobs = { start: (spec: { run(job: FakeJobHandle): typeof producer }) => { producer = spec.run(output.handle); return 'pbfuzz_fuzz-1' } }
     const fuzz = captureTools(host, { jobs }).get('pbfuzz_fuzz')!
     await fuzz.execute({ plan: VALID_PLAN, generator_code: 'def generate(**p): return b""' }, fakeExec(agent))
 
@@ -361,6 +372,10 @@ describe('pbfuzz_fuzz tool', () => {
       type: 'iter_result', iter: 1, stage: 1, parameters: { n: 7 }, reached: 1, triggered: 1, size: 64, signal: 'SIGABRT', exit_code: -6,
       trace: { breakpoints: [{ location: 'toy.c:1', hitTimes: 1, resolved: true }, { location: 'toy.c:9', hitTimes: 0, resolved: false }] },
     })}\n`)
+    // Engine progress streams into the job's output ring through the producer handle (DSH >= 0.2).
+    progress({ method: 'iteration', params: { n: 1 } })
+    progress({ method: 'log', params: 'engine chatter' })
+    expect(output.appended.join('')).toBe('iteration: {"n":1}\n')
     resolveFuzzRun(fuzzRunOk(1))
     const settled = await producer.done
 
@@ -373,7 +388,7 @@ describe('pbfuzz_fuzz tool', () => {
     expect(text).toContain('breakpoints hit: toy.c:1 ×1')
     expect(text).toContain('never bound')
     expect(text).toContain('next: pbfuzz_reflect')
-    expect(producer.readOutput()).not.toContain('PoC:')
+    expect(output.appended.join('')).not.toContain('PoC:')
   })
 
   it('throws when background is selected but no job registry is available', async () => {

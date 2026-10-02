@@ -101,7 +101,7 @@ function shouldForceContinue(ctx: Context, host: PbfuzzHost, agent: Agent): { me
   const phase = state?.phase ?? 'INIT'
   if (phase === 'SUCCESS' || phase === 'STOPPED') return undefined
   if (phase === 'INIT' && active.campaign.confirmed !== true) return undefined
-  const running = ctx.get('jobs')?.list(agent).some(job => job.kind === 'pbfuzz_fuzz' && job.status === 'running') ?? false
+  const running = ctx.get('jobs')?.list(agent.id).some(job => job.kind === 'pbfuzz_fuzz' && job.status === 'running') ?? false
   if (running) return undefined
 
   const pierRound = state?.pier_round ?? 0
@@ -210,25 +210,32 @@ export function installPierDriver(ctx: Context, host: PbfuzzHost): void {
     if (decision === undefined) return
     agent.steer(createUserMessage({
       content: [{ type: 'text', text: decision.message }],
-      source: { kind: 'plugin', plugin: 'pbfuzz', form: 'instructions' },
+      source: { kind: 'pbfuzz', form: 'instructions' },
     }))
   })
 
   // jobs is an optional peer (registerTools already degrades gracefully without it); the wakeup
   // fallback below simply never fires until it loads.
   ctx.inject(['jobs'], (jctx) => {
-    jctx.jobs.onJobDone((snapshot, owner) => {
-      // Copied from `@deepseek-ai/dsh-tool-jobs`'s own `onJobDone` usage (installed source): exactly
-      // this "already delivered" guard, so this listener never double-nudges a wake `dsh-tool-jobs`
-      // itself already delivered via `followup()`.
-      if (snapshot.kind !== 'pbfuzz_fuzz' || owner === undefined || snapshot.reported) return
-      if (owner.status !== 'idle') return
-      const decision = shouldForceContinue(ctx, host, owner)
-      if (decision === undefined) return
-      owner.followup(createUserMessage({
-        content: [{ type: 'text', text: decision.message }],
-        source: { kind: 'plugin', plugin: 'pbfuzz', form: 'notice', summary: 'pbfuzz: fuzz job finished' },
-      }))
-    })
+    jctx.effect(() => jctx.jobs.events.subscribe({ owners: 'scope' }, (event) => {
+      // Same filter `@deepseek-ai/dsh-tool-jobs` applies before it reports a completion itself: a
+      // waiter already collected it (`awaited`), or the owner is gone (`teardown`).
+      if (event.type !== 'settled' || event.job.kind !== 'pbfuzz_fuzz' || event.awaited || event.cause === 'teardown') return
+      const ownerId = event.job.owner
+      if (ownerId === undefined) return
+      // Dispatch is synchronous across listeners: deferring one tick lets dsh-tool-jobs deliver its
+      // own wake first, so the `status !== 'idle'` check below sees the owner it already woke and
+      // this listener never double-nudges.
+      queueMicrotask(() => {
+        const owner = jctx.get('agents')?.get(ownerId)
+        if (owner === undefined || owner.status !== 'idle') return
+        const decision = shouldForceContinue(ctx, host, owner)
+        if (decision === undefined) return
+        owner.followup(createUserMessage({
+          content: [{ type: 'text', text: decision.message }],
+          source: { kind: 'pbfuzz', form: 'notice', summary: 'pbfuzz: fuzz job finished' },
+        }))
+      })
+    }))
   })
 }

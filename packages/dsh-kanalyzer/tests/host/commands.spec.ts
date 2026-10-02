@@ -18,7 +18,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { inlineTargets, kanalyzerCommandLine, registerCommands } from '../../src/host/commands.ts'
 import { KanalyzerRuntime } from '../../src/host/runtime.ts'
-import { Config } from '../../src/host/settings.ts'
+import { resolveConfig } from '../../src/host/settings.ts'
 
 /** Minimal invocation: the `doctor`/`analyze` branches only read `rawInput`. */
 function invocation(rawInput: string): CommandInvocation {
@@ -68,7 +68,7 @@ describe('/kanalyzer command (src/host/commands.ts)', () => {
   })
 
   it('doctor: reports a real error, not a crash, when KAMain was never built', async () => {
-    const base = Config()
+    const base = resolveConfig()
     const cfg = { ...base, install: { ...base.install, installDir: join(tmp, 'empty-install') } }
     const runtime = new KanalyzerRuntime(new Context(), {
       config: () => cfg,
@@ -95,7 +95,7 @@ describe('/kanalyzer command (src/host/commands.ts)', () => {
   })
 
   it('analyze: reports a real error, not a crash, when KAMain was never built', async () => {
-    const base = Config()
+    const base = resolveConfig()
     const cfg = {
       ...base,
       install: { ...base.install, installDir: join(tmp, 'empty-install') },
@@ -127,7 +127,7 @@ describe('/kanalyzer command (src/host/commands.ts)', () => {
   })
 
   it('analyze: guidance error when neither inline targets nor standalone inputFilenames are given', async () => {
-    const base = Config()
+    const base = resolveConfig()
     const cfg = { ...base, install: { ...base.install, installDir: join(tmp, 'empty-install') } }
     const runtime = new KanalyzerRuntime(new Context(), {
       config: () => cfg,
@@ -153,7 +153,7 @@ describe('/kanalyzer command (src/host/commands.ts)', () => {
   })
 
   it('no arguments: the usage text, not a handoff', async () => {
-    const base = Config()
+    const base = resolveConfig()
     const cfg = { ...base, install: { ...base.install, installDir: join(tmp, 'empty-install') } }
     const runtime = new KanalyzerRuntime(new Context(), {
       config: () => cfg,
@@ -230,7 +230,7 @@ describe('/kanalyzer analyze with a real request (the trajectory\'s first input)
 
   /** Register the command against a runtime whose KAMain is missing — every handoff must happen before any analyse call. */
   function command(): { handler: (inv: CommandInvocation) => Promise<CommandResult> } {
-    const base = Config()
+    const base = resolveConfig()
     const cfg = { ...base, install: { ...base.install, installDir: join(tmp, 'empty-install') } }
     const runtime = new KanalyzerRuntime(new Context(), {
       config: () => cfg,
@@ -307,7 +307,7 @@ describe('agent/inbox/inserted listener (headless slash-command dispatch workaro
       },
       get: (name: string) => (name === 'commands' ? fakeCommands : undefined),
     } as unknown as Context
-    registerCommands(fakeCtx, () => Config(), '/nonexistent')
+    registerCommands(fakeCtx, () => resolveConfig(), '/nonexistent')
     return {
       fire: message => listener?.({ agent: 'the-agent', message }),
       executed,
@@ -353,7 +353,7 @@ describe('handoff channel: steer for analysis, followup only for build', () => {
   /** Same shape as the handoff suite above: a runtime whose KAMain is missing, so every branch
    * under test hands off before it could reach a real analysis. */
   function command(): { handler: (inv: CommandInvocation) => Promise<CommandResult> } {
-    const base = Config()
+    const base = resolveConfig()
     const cfg = { ...base, install: { ...base.install, installDir: join(tmp, 'empty-install') } }
     const runtime = new KanalyzerRuntime(new Context(), { config: () => cfg, writeStatus: async () => {}, packageRoot: tmp })
     const registered = new Map<string, CommandDefinition>()

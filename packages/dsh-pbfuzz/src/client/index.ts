@@ -1,6 +1,6 @@
 /**
- * pbfuzz browser half: the `pbfuzz` settings card (slot `settings.plugin.item`,
- * keyed by the namespace) and the campaign dashboard (slot
+ * pbfuzz browser half: the `pbfuzz` settings page (DSH >= 0.2: slot `plugins.row.config` on the
+ * Plugins page, keyed `<package>#<row id>`) and the campaign dashboard (slot
  * `conversation.session.header.utilities`, session scope, so it receives the
  * `useProjection` standard prop and reads the `pbfuzz` session projection).
  * Built by `scripts/bundle-client.mjs` into the classic-script factory
@@ -13,7 +13,8 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
+// Type-only: the Plugins page's `plugins.row.config` slot.
+import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 // Type-only: the session-header utilities slot.
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 // Type-only: the Session standard kit's `useProjection` seat.
@@ -64,7 +65,7 @@ function hostOf(ctx: ClientContext): PbfuzzCardHost {
       if (!response.ok) return false
       const view = response.value.namespaces.find(candidate => candidate.ns === PBFUZZ_SETTINGS_NS)
       if (view === undefined) return false
-      ctx.settingsScope.describe().acceptView(view)
+      ctx.configForms.describe().acceptView(view)
       return true
     },
   }
@@ -87,11 +88,15 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
 /** Plugin name. */
 export const name = 'pbfuzz-client'
 
-/** Required services: slots + locale for UI, settingsScope (and its `remote` transport) for the card. */
-export const inject = ['slots', 'locale', 'remote', 'remote.session', 'remote.commands', 'remote.settings', 'sessions', 'settingsScope']
+/** The bundle this client half ships in, and the row id its `cordis.patch.yml` declares (the Plugins page keys on both). */
+const BUNDLE = '@pbfuzz/dsh-pbfuzz'
+const ROW = 'pbfuzz'
+
+/** Required services: slots + locale for UI, configForms (and the `remote` transport) for the settings page. */
+export const inject = ['slots', 'locale', 'remote', 'remote.session', 'remote.commands', 'remote.settings', 'sessions', 'configForms']
 
 /**
- * Register the settings card and the dashboard.
+ * Register the settings page and the dashboard.
  * @param ctx - client plugin context.
  */
 export function apply(ctx: ClientContext): void {
@@ -99,14 +104,14 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'pbfuzz: dictionaries')
 
   const card = new PbfuzzCardController(
-    ctx.settingsScope.bind<unknown>({ namespace: PBFUZZ_SETTINGS_NS }),
-    ctx.settingsScope.describe(),
+    ctx.configForms.get<unknown>(PBFUZZ_SETTINGS_NS),
+    ctx.configForms.describe(),
     hostOf(ctx),
   )
   ctx.effect(() => () => { card.dispose() }, 'pbfuzz: settings card')
-  ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
-    name: 'settings.plugin.item',
-    key: PBFUZZ_SETTINGS_NS,
+  ctx.slots.inject('plugins.row.config', () => ctx.slots.register({
+    name: 'plugins.row.config',
+    key: `${BUNDLE}#${ROW}`,
     locale: NS,
     inject: () => card.inject(),
   }, PbfuzzSettingsCard))

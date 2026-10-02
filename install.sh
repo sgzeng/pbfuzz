@@ -39,24 +39,30 @@ add pbfuzz-dsh-pbfuzz
 
 # The plugin spawns the engine with `execution.pythonPath` (default: system python3, which has no
 # engine). Point it at the venv built by build.sh — i.e. the Python that build.sh selected, the
-# local pyenv 3.11 when the system one was too old. Only that one key is changed; a backup is kept.
+# local pyenv 3.11 when the system one was too old. DSH >= 0.2 keeps plugin settings in the
+# profile's own patch layer, so that is where the one key goes (a backup is kept); every other
+# setting stays untouched and is edited from the web UI (Settings -> pbfuzz).
 VENV_PY=$PWD/engine/.venv/bin/python
 "$VENV_PY" -c 'import sys,yaml; sys.exit(sys.version_info < (3, 11))' \
   || { echo "error: engine venv is missing or not Python >= 3.11 with PyYAML; rerun ./build.sh" >&2; exit 1; }
-SETTINGS=${DSH_HOME:-$HOME/.dsh}/settings.yaml
-mkdir -p "$(dirname "$SETTINGS")"
-[ ! -f "$SETTINGS" ] || cp -p "$SETTINGS" "$SETTINGS.pbfuzz-bak"
-"$VENV_PY" - "$SETTINGS" "$VENV_PY" <<'PY'
+PATCH=${DSH_HOME:-$HOME/.dsh}/profiles/$PROFILE/cordis.patch.yml
+[ -f "$PATCH" ] || { echo "error: $PATCH not found - 'dsh plugin add' did not create the profile?" >&2; exit 1; }
+cp -p "$PATCH" "$PATCH.pbfuzz-bak"
+"$VENV_PY" - "$PATCH" "$VENV_PY" <<'PY'
 import sys, yaml
 path, py = sys.argv[1:]
-try:
-    with open(path) as f: doc = yaml.safe_load(f) or {}
-except FileNotFoundError:
-    doc = {}
-doc.setdefault("pbfuzz", {}).setdefault("execution", {})["pythonPath"] = py
-with open(path, "w") as f: yaml.safe_dump(doc, f, default_flow_style=False, sort_keys=False)
+text = open(path).read()
+header = "".join(line for line in text.splitlines(keepends=True) if line.startswith("#"))
+patch = yaml.safe_load(text) or []
+entry = next((e for e in patch if isinstance(e, dict) and e.get("id") == "pbfuzz"), None)
+if entry is None:
+    entry = {"id": "pbfuzz", "name": "@pbfuzz/dsh-pbfuzz"}
+    patch.append(entry)
+entry.setdefault("config", {}).setdefault("execution", {})["pythonPath"] = py
+with open(path, "w") as f:
+    f.write(header + yaml.safe_dump(patch, default_flow_style=False, sort_keys=False))
 PY
-echo "==> pbfuzz.execution.pythonPath = $VENV_PY"
+echo "==> pbfuzz.execution.pythonPath = $VENV_PY  (in $PATCH)"
 
 cat <<MSG
 

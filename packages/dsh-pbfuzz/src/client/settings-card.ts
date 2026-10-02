@@ -4,7 +4,7 @@
  */
 
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { SettingsDescribeFace, SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm, SettingsDescribeFace } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { PathForm, type FieldState, type FormShell } from './card-form.ts'
 import { FIELDS, KANALYZER_NS } from './settings-model.ts'
 
@@ -104,7 +104,7 @@ export interface PbfuzzCardFace {
   selfcheck: () => void
 }
 
-/** Bridges the `pbfuzz` scope and the describe mirror onto the card's snapshot. */
+/** Bridges the `pbfuzz` config form and the describe mirror onto the card's snapshot. */
 export class PbfuzzCardController {
   private readonly form: PathForm
   private readonly store: SnapshotStore<PbfuzzCardState>
@@ -112,13 +112,13 @@ export class PbfuzzCardController {
   private selfcheckState: SelfcheckState = { phase: 'idle' }
 
   /**
-   * @param scope - bound `pbfuzz` scope.
+   * @param scope - the `pbfuzz` entry's config form (`ctx.configForms.get('pbfuzz')`).
    * @param describe - shared describe face, read for the served-namespace list.
    * @param host - the DSH adapter for the Self-check button; undefined until a
    *   parallel wave wires `index.ts` to build one over `ctx`.
    */
   constructor(
-    scope: SettingsScope<unknown>,
+    scope: ConfigForm<unknown>,
     private readonly describe: SettingsDescribeFace,
     private readonly host?: PbfuzzCardHost,
   ) {

@@ -38,7 +38,7 @@ INSTALL_DEPS=1 ./build-target.sh       # fetch + patch + build the target native
 
 On `SUCCESS`, `state/state.json` (under the campaign's `output.dir`, printed at the end of
 `run-campaign.sh`) names the PoC input and the exact command to reproduce it — run that command
-and stderr shows `MAGMA: Bug <ID> reached`/`triggered`. `pbfuzz.budget.*` in `~/.dsh/settings.yaml`
+and stderr shows `MAGMA: Bug <ID> reached`/`triggered`. `budget.*` under the `pbfuzz` entry of your profile's `cordis.patch.yml` (web UI: Plugins → @pbfuzz/dsh-pbfuzz → Configure)
 (`maxPierRounds`, `campaignWallTimeMin`, ...) is the only brake on an unattended run; re-running
 the same campaign resumes from its saved phase, and deleting `output.dir` starts over.
 

@@ -5,7 +5,7 @@
 
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  IconCloseOutline16, StateDot, Tag, useDismissOnOutsidePointer, type StateDotState, type TagTone,
+  IconCloseOutlineRegular, StateDot, Tag, useDismissOnOutsidePointer, type StateDotState, type TagTone,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: the session-header utilities slot and the Session standard kit (useProjection).
@@ -214,7 +214,7 @@ export function PbfuzzDashboardPanel(props: PbfuzzDashboardProps) {
             <div className="pbfuzz-dash-header">
               <strong>{t('dash.title')}</strong>
               <button type="button" className="pbfuzz-icon-btn" aria-label={t('dash.close')} onClick={() => { setOpen(false) }}>
-                <IconCloseOutline16 />
+                <IconCloseOutlineRegular size={16} />
               </button>
             </div>
             <div className="pbfuzz-dash-scroll">

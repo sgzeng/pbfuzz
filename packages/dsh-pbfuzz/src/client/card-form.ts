@@ -10,7 +10,7 @@
  */
 
 import type { SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { FIELDS, pathOf, type FieldSpec } from './settings-model.ts'
 
 /** The write one staged edit performs on save. */
@@ -139,7 +139,7 @@ export class PathForm {
    * @param scope - bound scope of the `pbfuzz` namespace.
    * @param changed - called after every local state change (the controller republishes).
    */
-  constructor(private readonly scope: SettingsScope<unknown>, private readonly changed: () => void) {}
+  constructor(private readonly scope: ConfigForm<unknown>, private readonly changed: () => void) {}
 
   /** @returns the card-level state. */
   shell(): FormShell {

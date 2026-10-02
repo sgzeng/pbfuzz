@@ -144,7 +144,7 @@ if (typeof reg?.factory === 'function') {
     const exportsObj = reg.factory(req)
     if (typeof exportsObj?.apply !== 'function') fail('factory exports no apply()')
     if (!Array.isArray(exportsObj?.inject)) fail('factory exports no inject[]')
-    else if (JSON.stringify(exportsObj.inject) !== JSON.stringify(['slots', 'locale', 'remote', 'remote.session', 'remote.commands', 'remote.settings', 'sessions', 'settingsScope'])) {
+    else if (JSON.stringify(exportsObj.inject) !== JSON.stringify(['slots', 'locale', 'remote', 'remote.session', 'remote.commands', 'remote.settings', 'sessions', 'configForms'])) {
       fail(`unexpected inject ${JSON.stringify(exportsObj.inject)}`)
     }
   } catch (error) {

@@ -1,0 +1,89 @@
+name: claude-autofix
+
+# Started by dsh-compat.yml when the weekly check finds pbfuzz incompatible with a newer DeepSeek
+# Harness (or by hand, with an issue number). Claude diagnoses the failure, fixes the plugins and
+# opens a PULL REQUEST against the default branch - it never pushes to master itself, so a human
+# (or CI) still looks at the diff before it lands.
+#
+# One-time setup this workflow cannot do for you:
+#   1. Repository secret ANTHROPIC_API_KEY.
+#   2. Settings -> Actions -> General -> "Allow GitHub Actions to create and approve pull requests".
+#   3. (Optional) Install the Claude GitHub App so `@claude` comments on the issue also work.
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'The dsh-compat issue this run is fixing'
+        required: true
+      dsh_version:
+        description: 'DSH version that broke pbfuzz'
+        required: true
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: claude-autofix-${{ github.event.inputs.issue_number || github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    # Manual/dispatched runs, or an `@claude` comment on a dsh-compat issue by someone with write access.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       contains(github.event.comment.body, '@claude') &&
+       contains(github.event.issue.labels.*.name, 'dsh-compat') &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    env:
+      PBFUZZ_PYTHON: python
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Toolchain for the checks Claude will run
+        run: |
+          python -m pip install -e 'engine[dev]'
+          npm install -g playwright
+          npx playwright install --with-deps chromium
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args: >-
+            --max-turns 80
+            --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+          prompt: |
+            pbfuzz (plugins for DeepSeek Harness, DSH) stopped working with a newer DSH release. Issue
+            #${{ github.event.inputs.issue_number || github.event.issue.number }} has the failing weekly
+            check; the DSH version is ${{ github.event.inputs.dsh_version || 'named in the issue title' }}.
+
+            Read docs/dsh-upgrade.md first: it is the playbook and lists what the 0.1 -> 0.2 upgrade changed.
+
+            1. Run `scripts/compat-check.sh <version>` and reproduce the failure. It re-pins the repo to
+               that DSH release (scripts/bump-dsh.mjs); keep those pin changes.
+            2. Fix the plugins (packages/dsh-pbfuzz, packages/dsh-kanalyzer) against the NEW DSH APIs.
+               The truth is in node_modules/@deepseek-ai/*/ (lib/types/*.d.ts and README.md), not in memory.
+               Fix the cause; never delete or weaken a test, and never skip a check, to get green.
+            3. Re-run `scripts/compat-check.sh --current` until it prints COMPAT-OK, and `pnpm run test:engine`.
+            4. If the break is not visible to a test or to scripts/smoke-web.mjs, extend one so it would
+               have been, and add what you learned to docs/dsh-upgrade.md.
+            5. Create a branch `fix/dsh-<version>`, commit, push it and open a PULL REQUEST against the
+               default branch (`gh pr create`) that links the issue. Do NOT push to the default branch.
+               Say honestly in the PR what you verified and what you could not (for example the model-driven
+               readelf-c run needs DEEPSEEK_API_KEY).

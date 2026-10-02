@@ -149,7 +149,7 @@ export class PbfuzzHost {
     return this.settingsSource()
   }
 
-  /** Swap the settings source (installSection attach/detach). */
+  /** Swap the settings source. */
   setSettingsSource(source: () => PbfuzzSettings): void {
     this.settingsSource = source
   }

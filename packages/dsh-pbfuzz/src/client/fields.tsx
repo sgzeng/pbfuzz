@@ -6,7 +6,7 @@
  */
 
 import { useState, type ReactNode } from 'react'
-import { Button, IconChevronDownOutline14, Input, Menu, Switch, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconChevronDownOutlineRegular, Input, Menu, Switch, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { FieldState } from './card-form.ts'
 
 /** Props shared by every control. */
@@ -161,7 +161,7 @@ export function EnumField(props: BaseFieldProps & { options: readonly FieldOptio
               onClick={() => { setOpen(!open) }}
             >
               {current?.label ?? String(props.state.value ?? '')}
-              <IconChevronDownOutline14 />
+              <IconChevronDownOutlineRegular size={14} />
             </Button>
           )}
         />

@@ -13,13 +13,13 @@ import type { Context } from '@deepseek-ai/cordis'
 export const PLUGIN_ID = '@pbfuzz/dsh-pbfuzz'
 
 const CSS = `
-.pbfuzz-card{list-style:none;border:1px solid var(--dsw-alias-border-primary,rgba(127,127,127,.25));border-radius:12px;margin:0 0 12px}
+.pbfuzz-card{border:1px solid var(--dsw-alias-border-primary,rgba(127,127,127,.25));border-radius:12px;margin:0 0 12px}
 .pbfuzz-card-header{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:8px;width:100%;padding:12px 16px;cursor:pointer}
 .pbfuzz-card-head-text{display:flex;flex-direction:column;flex:1;min-width:0;gap:2px}
 .pbfuzz-card-name{font-weight:600;color:var(--dsw-alias-text-primary,inherit)}
 .pbfuzz-card-desc,.pbfuzz-muted,.pbfuzz-field-hint{color:var(--dsw-alias-text-tertiary,rgba(127,127,127,.9));font-size:12px}
 .pbfuzz-card[data-open=true] svg{transform:rotate(180deg)}
-.pbfuzz-card-body{padding:0 16px 16px;display:flex;flex-direction:column;gap:12px}
+.pbfuzz-card-body{padding:16px;display:flex;flex-direction:column;gap:12px}
 .pbfuzz-group{border:0;border-top:1px solid var(--dsw-alias-border-primary,rgba(127,127,127,.2));margin:0;padding:12px 0 0;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px 16px}
 .pbfuzz-group-title{font-weight:600;font-size:13px;padding:0 4px 0 0}
 .pbfuzz-field{display:flex;flex-direction:column;gap:4px;min-width:0}

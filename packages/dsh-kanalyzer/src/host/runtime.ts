@@ -356,7 +356,7 @@ export class KanalyzerRuntime extends Service implements KanalyzerService, Prebu
         const id = this.jobs.start({
           kind: 'kanalyzer',
           label,
-          ...(caller?.agent !== undefined ? { owner: caller.agent } : {}),
+          ...(caller?.agent !== undefined ? { owner: caller.agent.id } : {}),
           ...(hooks?.outputLimitBytes !== undefined ? { outputLimitBytes: hooks.outputLimitBytes } : {}),
           run: () => {
             const p = begin()

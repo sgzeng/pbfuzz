@@ -870,12 +870,13 @@ export function registerTools(ctx: Context, host: PbfuzzHost): void {
       const id = jobs.start({
         kind: 'pbfuzz_fuzz',
         label: `fuzz ${active.campaign.id} round ${round}`,
-        ...exec.agent !== undefined ? { owner: exec.agent } : {},
-        run: () => {
+        ...exec.agent !== undefined ? { owner: exec.agent.id } : {},
+        run: (job) => {
           const controller = new AbortController()
-          let buffered = ''
+          // Engine progress streams into the job's output ring (DSH >= 0.2: the producer appends; the
+          // registry owns the consuming cursor behind `job_output`).
           const stopProgress = host.engine.onProgress((n) => {
-            if (n.method !== 'log') buffered += `${n.method}: ${JSON.stringify(n.params)}\n`
+            if (n.method !== 'log') job.append(`${n.method}: ${JSON.stringify(n.params)}\n`, { channel: 'stdout' })
           })
           // The digest rides in `detail`, which is the one field every reader gets: dsh-tool-jobs'
           // completion notice quotes it verbatim, and `job_output` ends every read with
@@ -885,7 +886,7 @@ export function registerTools(ctx: Context, host: PbfuzzHost): void {
           const done = finishFuzz(host, agent, active, params, controller.signal).then((outcome) => {
             stopProgress()
             const detail = `${outcome.detail} (phase ${outcome.phase})${outcome.digest !== undefined ? `\n${outcome.digest}` : ''}`
-            return { status: outcome.status, detail, output: outcome.output }
+            return { status: outcome.status, detail }
           })
           return {
             cancel: (reason?: string) => {
@@ -893,7 +894,6 @@ export function registerTools(ctx: Context, host: PbfuzzHost): void {
               void host.engine.call('fuzz.cancel', { campaignPath: active.path }).catch(() => undefined)
             },
             done,
-            readOutput: () => { const out = buffered; buffered = ''; return out },
           }
         },
       })

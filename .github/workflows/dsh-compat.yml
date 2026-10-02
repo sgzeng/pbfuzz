@@ -1,0 +1,179 @@
+name: dsh-compat
+
+# Does pbfuzz still work with the newest DeepSeek Harness? DSH moves fast: 0.1.x -> 0.2 changed
+# settings, jobs, message sources and the whole web client, and only a real `dsh web` showed that the
+# UI no longer started. So this runs weekly against npm's `latest` instead of waiting for someone to
+# notice. The checks themselves live in scripts/compat-check.sh (run it locally to reproduce).
+#
+# On failure a `dsh-compat` issue is opened (or updated) and claude-autofix.yml is dispatched to
+# propose a fix as a PR. On success an open `dsh-compat` issue is closed.
+
+on:
+  schedule:
+    - cron: '23 5 * * 1'            # Mondays 05:23 UTC
+  workflow_dispatch:
+    inputs:
+      dsh_version:
+        description: 'DSH version to test (empty = npm latest)'
+        required: false
+        default: ''
+      e2e:
+        description: 'Also run the readelf-c end-to-end (needs the DEEPSEEK_API_KEY secret)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: dsh-compat
+  cancel-in-progress: false
+
+jobs:
+  compat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.verdict.outputs.version }}
+      failed_step: ${{ steps.verdict.outputs.failed_step }}
+    env:
+      PBFUZZ_PYTHON: python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the engine, Chromium and the e2e target's toolchain
+        run: |
+          python -m pip install -e 'engine[dev]'
+          npm install -g playwright
+          npx playwright install --with-deps chromium
+          sudo apt-get install -y --no-install-recommends gdb clang
+
+      - name: Compat check (pin -> typecheck -> tests -> bundles -> real dsh web)
+        id: check
+        # continue-on-error: the verdict and the issue below must run whatever happens here.
+        continue-on-error: true
+        env:
+          DSH_VERSION_INPUT: ${{ inputs.dsh_version }}
+        run: |
+          set -o pipefail
+          scripts/compat-check.sh "$DSH_VERSION_INPUT" 2>&1 | tee compat.log
+
+      - name: End-to-end on readelf-c (headless, real model)
+        id: e2e
+        if: ${{ steps.check.outcome == 'success' && (inputs.e2e || github.event_name == 'schedule') }}
+        continue-on-error: true
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          if [ -z "$DEEPSEEK_API_KEY" ]; then echo "DEEPSEEK_API_KEY not set - skipping the model-driven e2e"; exit 0; fi
+          ./install.sh --profile headless
+          # A model-driven run can legitimately miss once; two misses in a row is a real failure.
+          for attempt in 1 2; do
+            (cd examples/readelf-c && ./run.sh) || true
+            if grep -q '"phase": "SUCCESS"' /tmp/pbfuzz-readelf-c/.pbfuzz/readelf-c/state/state.json 2>/dev/null; then exit 0; fi
+          done
+          echo "COMPAT-FAILED-AT: readelf-c end-to-end did not reach SUCCESS" | tee -a compat.log
+          exit 1
+
+      - name: Record the verdict
+        id: verdict
+        if: always()
+        run: |
+          version=$(sed -n 's/^DSH_VERSION=//p' HARNESS_COMMIT)
+          failed=$(grep -o 'COMPAT-FAILED-AT: .*' compat.log 2>/dev/null | tail -1 | sed 's/^COMPAT-FAILED-AT: //' || true)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "failed_step=$failed" >> "$GITHUB_OUTPUT"
+          echo "### DSH $version" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$failed" ]; then echo "Failed at: **$failed**" >> "$GITHUB_STEP_SUMMARY"; else echo "No incompatibility found." >> "$GITHUB_STEP_SUMMARY"; fi
+          tail -n 60 compat.log > compat-tail.log 2>/dev/null || echo "(no log captured)" > compat-tail.log
+
+      - name: Fail the job when the check or the e2e failed
+        if: ${{ steps.check.outcome == 'failure' || steps.e2e.outcome == 'failure' }}
+        run: exit 1
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compat-log
+          path: |
+            compat.log
+            compat-tail.log
+
+  notify:
+    needs: compat
+    if: ${{ always() && needs.compat.result != 'cancelled' }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: compat-log
+        continue-on-error: true
+      - name: Open / update / close the dsh-compat issue
+        uses: actions/github-script@v7
+        env:
+          VERSION: ${{ needs.compat.outputs.version }}
+          FAILED_STEP: ${{ needs.compat.outputs.failed_step }}
+          RESULT: ${{ needs.compat.result }}
+        with:
+          script: |
+            const fs = require('fs')
+            const { owner, repo } = context.repo
+            const label = 'dsh-compat'
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`
+            const version = process.env.VERSION || 'unknown'
+            const failed = process.env.RESULT === 'failure'
+            const tail = fs.existsSync('compat-tail.log') ? fs.readFileSync('compat-tail.log', 'utf8').slice(-6000) : '(no log captured)'
+
+            try { await github.rest.issues.createLabel({ owner, repo, name: label, color: 'b60205', description: 'pbfuzz is incompatible with a newer DeepSeek Harness' }) } catch { /* exists */ }
+            const open = (await github.rest.issues.listForRepo({ owner, repo, labels: label, state: 'open' })).data.filter(i => !i.pull_request)
+
+            if (!failed) {
+              for (const issue of open) {
+                await github.rest.issues.createComment({ owner, repo, issue_number: issue.number, body: `Compatible with DSH ${version} again ([run](${runUrl})). Closing.\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_` })
+                await github.rest.issues.update({ owner, repo, issue_number: issue.number, state: 'closed', state_reason: 'completed' })
+              }
+              return
+            }
+
+            const body = [
+              process.env.FAILED_STEP ? `The weekly compatibility check **failed against DSH ${version}** at: \`${process.env.FAILED_STEP}\` ([run](${runUrl})).` : `The weekly compatibility job broke **before the check ran** (runner or setup problem, not a DSH incompatibility; [run](${runUrl})).`,
+              '',
+              '<details><summary>last lines of the log</summary>',
+              '',
+              '```',
+              tail,
+              '```',
+              '</details>',
+              '',
+              'Reproduce: `scripts/compat-check.sh ' + version + '`. Playbook and the 0.1 -> 0.2 migration notes: `docs/dsh-upgrade.md`.',
+              '',
+              '---',
+              '_Generated by [Claude Code](https://claude.ai/code)_',
+            ].join('\n')
+
+            let issue
+            if (open.length > 0) {
+              issue = open[0]
+              await github.rest.issues.createComment({ owner, repo, issue_number: issue.number, body })
+            } else {
+              issue = (await github.rest.issues.create({ owner, repo, title: `pbfuzz is incompatible with DSH ${version}`, body, labels: [label] })).data
+            }
+
+            // No failing step recorded = the runner/setup broke before the check ran: a human problem, not a DSH one.
+            if (!process.env.FAILED_STEP) { core.warning('no COMPAT-FAILED-AT recorded; not starting the fixer'); return }
+
+            // Events created with GITHUB_TOKEN do not trigger other workflows, so start the fixer explicitly.
+            try {
+              await github.rest.actions.createWorkflowDispatch({ owner, repo, workflow_id: 'claude-autofix.yml', ref: context.payload.repository?.default_branch ?? 'master', inputs: { issue_number: String(issue.number), dsh_version: version } })
+            } catch (error) {
+              core.warning(`could not dispatch claude-autofix.yml: ${error.message}`)
+            }
