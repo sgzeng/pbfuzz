@@ -23,6 +23,9 @@ importers:
 
   .:
     devDependencies:
+      '@types/node':
+        specifier: ^22.20.2
+        version: 22.20.2
       esbuild:
         specifier: ^0.25.0
         version: 0.25.12

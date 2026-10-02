@@ -16,9 +16,12 @@
     "check:clients": "node packages/dsh-pbfuzz/scripts/bundle-client.mjs && node packages/dsh-kanalyzer/scripts/build-client.mjs",
     "test:all": "pnpm run test && pnpm run check:clients && pnpm run test:engine",
     "codegen": "node scripts/codegen.mjs",
-    "codegen:check": "node scripts/codegen.mjs --check"
+    "codegen:check": "node scripts/codegen.mjs --check",
+    "test:dsh": "vitest run --config dsh-tests/vitest.config.ts",
+    "typecheck:dsh": "tsc -p dsh-tests/tsconfig.json"
   },
   "devDependencies": {
+    "@types/node": "^22.20.2",
     "esbuild": "^0.25.0",
     "json-schema-to-typescript": "^15.0.4",
     "typescript": "^5.7.0",

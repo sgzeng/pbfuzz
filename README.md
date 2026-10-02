@@ -91,6 +91,7 @@ packages/dsh-kanalyzer/  the static-analysis plugin
 engine/                  the Python fuzzing sidecar (pbfuzz_engine/)
 contracts/               JSON Schemas shared by both plugins and the engine (pnpm codegen)
 examples/                worked targets: C/C++, Python (atheris), Java (Jazzer)
+dsh-tests/               tests that boot the real DSH in-process (no mocks), always on npm's latest
 docs/                    DSH upgrade playbook, verification records
 ```
 
@@ -100,6 +101,7 @@ docs/                    DSH upgrade playbook, verification records
 pnpm -r typecheck
 pnpm -r test                 # vitest, both packages
 pnpm run test:engine         # pytest, the Python engine
+pnpm run test:dsh            # the real DSH, newest from npm, booted in-process (needs the network; no API key)
 pnpm run check:clients       # settings-card ⇔ schema parity, client bundle self-checks
 pnpm run codegen:check       # contracts/ generated files are up to date
 ```
@@ -109,8 +111,10 @@ change; commit the generated diff together with the schema.
 
 ### DeepSeek Harness compatibility
 
-DSH changes its plugin APIs between releases, so a [weekly workflow](.github/workflows/dsh-compat.yml) checks
-pbfuzz against the newest DSH and opens an issue (plus a fix PR, if `ANTHROPIC_API_KEY` is set) when it breaks.
+DSH changes its plugin APIs between releases, so every push and PR runs [`dsh-tests/`](dsh-tests) against the
+newest DSH on npm (the real DSH booted in-process; nothing mocked), and a
+[weekly workflow](.github/workflows/dsh-compat.yml) checks pbfuzz against it again and opens an issue (plus a fix PR,
+if `ANTHROPIC_API_KEY` is set) when it breaks.
 Reproduce or check by hand with `scripts/compat-check.sh [version | --current]`; what changed in 0.2 and how to
 fix the next break is in [`docs/dsh-upgrade.md`](docs/dsh-upgrade.md).
 

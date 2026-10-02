@@ -46,3 +46,49 @@ jobs:
 
       - name: Engine tests
         run: cd engine && python -m pytest -q
+
+  # The plugins against the NEWEST DeepSeek Harness, never against the version the lockfile pins.
+  # The job above is hermetic on purpose; this one is not: when DSH publishes a release that breaks
+  # the plugins, it goes red on the next push or PR instead of on a user's machine. dsh-tests/ boots
+  # the real DSH in-process (nothing from @deepseek-ai/* is mocked) and drives a whole PIER round
+  # through it; only the model is scripted, so no API key and no spend. The weekly dsh-compat
+  # workflow runs the same tests after re-pinning, which covers weeks without a push.
+  dsh-latest:
+    runs-on: ubuntu-latest
+    env:
+      PBFUZZ_PYTHON: python
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the engine
+        run: cd engine && python -m pip install -e .
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Resolve npm's latest DSH
+        id: dsh
+        run: echo "version=$(npm view @deepseek-ai/dsh dist-tags.latest)" >> "$GITHUB_OUTPUT"
+
+      # Keyed by the resolved version: a new DSH release is a cache miss, so this is never stale.
+      - uses: actions/cache@v4
+        with:
+          path: .dsh-real
+          key: dsh-real-${{ runner.os }}-${{ steps.dsh.outputs.version }}
+
+      - name: Typecheck the real-DSH tests
+        run: pnpm run typecheck:dsh
+
+      - name: Real-DSH tests (DSH ${{ steps.dsh.outputs.version }})
+        run: pnpm run test:dsh

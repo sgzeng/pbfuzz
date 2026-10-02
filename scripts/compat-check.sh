@@ -6,7 +6,9 @@
 #   scripts/compat-check.sh --current    # check the pins as committed (what a dev machine usually wants)
 #
 # Every step runs against the real DSH packages: forced typecheck (tsc -b alone skips work when only
-# the typings changed), unit tests, client bundles, then the plugins are built, installed into a
+# the typings changed), unit tests, the in-process real-DSH tests (dsh-tests/: the real DSH booted
+# with the plugins installed, a whole PIER round driven through it, no mocks), client bundles, then
+# the plugins are built, installed into a
 # scratch DSH profile and a real `dsh web` is driven with Chromium (scripts/smoke-web.mjs). The
 # web step is the one that caught the 0.2 `settingsScope` removal: the host half was fine, both
 # client bundles silently never activated and the UI was blank.
@@ -37,6 +39,9 @@ pnpm -r typecheck
 
 step "unit tests"
 pnpm -r test
+
+step "real-DSH tests (in-process DSH $DSH_VERSION)"
+PBFUZZ_DSH_VERSION=$DSH_VERSION pnpm run test:dsh
 
 step "client bundles + contracts"
 pnpm run check:clients

@@ -1,4 +1,5 @@
 node_modules/
+.dsh-real/
 lib/
 dist/
 *.tsbuildinfo

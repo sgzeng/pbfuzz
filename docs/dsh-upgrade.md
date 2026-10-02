@@ -7,13 +7,14 @@ the whole web client). This is how pbfuzz keeps up, and what to check when it do
 
 | What | Where |
 |---|---|
+| The real DSH, newest from npm, booted in-process with both plugins installed; every push and PR | `dsh-tests/`, CI job `dsh-latest` in `.github/workflows/ci.yml`, locally `pnpm run test:dsh` |
 | Weekly check against npm's `latest`, opens a `dsh-compat` issue on failure | `.github/workflows/dsh-compat.yml` |
 | Claude diagnoses it and opens a fix **PR** (needs `ANTHROPIC_API_KEY`) | `.github/workflows/claude-autofix.yml` |
 | The check itself — run it locally to reproduce | `scripts/compat-check.sh [version \| --current]` |
 | Re-pin every DSH version in the repo in one go | `node scripts/bump-dsh.mjs [version]` |
 | Real `dsh web` + Chromium: UI boots, both settings pages render | `scripts/smoke-web.mjs` |
 
-`compat-check.sh` runs: forced typecheck → unit tests → client bundles → build and install into a
+`compat-check.sh` runs: forced typecheck → unit tests → real-DSH tests → client bundles → build and install into a
 scratch DSH profile → web smoke. Add `DEEPSEEK_API_KEY` and run `examples/readelf-c/run.sh` for the
 model-driven end-to-end (the weekly job does this when the secret exists).
 
@@ -22,11 +23,46 @@ model-driven end-to-end (the weekly job does this when the secret exists).
 - **`tsc -b` is incremental** and only compares the *sources*; after a DSH upgrade it reports "up to date"
   while the new typings would fail. `dsh-pbfuzz`'s `typecheck` therefore uses `--force`.
 - **Unit tests mock DSH.** They pass against APIs that no longer exist (the 0.2 migration kept 414 tests
-  green while `installSection` was gone).
+  green while `installSection` was gone). `dsh-tests/` is the layer that does not: it runs the real DSH.
 - **The web client has no typecheck** (it needs DSH's client packages). A wrong import compiles to a bundle
   and fails in the browser — twice during the 0.2 migration (a removed icon, a deleted `useState` import).
   Only `smoke-web.mjs` sees those.
 - **The headless run is the real proof** that PLAN → IMPLEMENT → EXECUTE → REFLECT works end to end.
+
+## The real-DSH tests (`dsh-tests/`)
+
+They answer one question with no mocks: **do the built plugins, installed the way a user installs them, work
+inside the newest DSH?**
+
+- `global-setup.ts` installs `@deepseek-ai/dsh` at npm's `latest` (never the lockfile's version; cached under
+  `.dsh-real/`, keyed by version), builds and packs both plugins, and runs the real `dsh plugin add` into a scratch
+  profile. DSH's own peer-range admission happens there, so a latest DSH outside the plugins' declared range fails
+  the run with `would not install ... run node scripts/bump-dsh.mjs <version>`.
+- `harness.ts` boots that profile in-process with the same `runProfile()` the `dsh` binary calls. Each spec gets
+  its own copy of the DSH home (and `HOME`), so nothing touches the machine's real `~/.dsh`.
+- **Only the model is scripted** (`scripted-llm.ts`: a subclass of DSH's real `LlmAdapter` registered with the
+  real `ctx.llm`). The agent loop, ToolRuntime and its guard chain, CommandRuntime, user questions, the jobs
+  registry, the settings provider and the session log are all DSH's. No API key is read (they are stripped from
+  the environment) and nothing leaves the machine except the npm install.
+
+| Spec | What it proves in the real DSH |
+|---|---|
+| `load.spec.ts` | both plugins mount; every tool, command and skill registers; pbfuzz picks up kanalyzer's service |
+| `settings.spec.ts` | an edit via `settings.update` reaches the running plugin and the profile patch; the self-check cache is merged without clobbering other fields |
+| `guard.spec.ts` | the guard, DSH's argument validation and the phase gate, state-write and bash-tamper denials, through `tools.execute` |
+| `turn.spec.ts` | what the agent loop sends the model, a denial reaching it, the PIER driver's nudge and its headless cap |
+| `pier.spec.ts` | a whole round: campaign draft and approval, PLAN, a fuzz session as a DSH job by the real engine, the job's notice waking the agent, REFLECT, SUCCESS |
+| `kanalyzer.spec.ts` | kanalyzer's tool and command through DSH's runtimes |
+
+Run it: `pnpm run test:dsh` (needs the network and Python with the engine installed: `pip install -e engine`).
+`PBFUZZ_DSH_VERSION=<version or dist-tag>` reproduces a failure on another release; `PBFUZZ_DSH_DIR` moves the
+install; `PBFUZZ_SKIP_BUILD=1` skips the plugin build when you have just built.
+
+When it goes red on a new DSH: the first lines of the failure name the spec and, for a stuck round, print what
+the scripted model was last told (`transcript()`), which is usually enough to see which DSH API moved. Fix the
+plugin, not the test. If DSH gained behaviour the plugins now depend on, add a spec for it here.
+
+What it does not cover: the web client (that is `scripts/smoke-web.mjs`), a real model, and the LLVM toolchain.
 
 ## What 0.1.5 → 0.2.0 changed, and what we did
 
