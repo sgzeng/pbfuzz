@@ -27,7 +27,11 @@ want=$("$PY" -c 'import sys; print(sys.base_prefix)')
 have=$(engine/.venv/bin/python -c 'import sys; print(sys.base_prefix)' 2>/dev/null || true)
 [ "$want" = "$have" ] || rm -rf engine/.venv
 [ -d engine/.venv ] || "$PY" -m venv engine/.venv || die "venv failed (sudo apt install python3-venv)"
-engine/.venv/bin/pip install -q -e engine
+# `[dev]` (pytest) too: this venv is also what `pnpm run test:engine` runs against by default
+# (package.json), and CI's own `pip install -e '.[dev]'` is the contract that promise rests on —
+# without it here, a fresh `./build.sh` leaves no interpreter anywhere with pytest installed, and
+# the README's own "pnpm run test:engine" (Development section) fails with "No module named pytest".
+engine/.venv/bin/pip install -q -e "engine[dev]"
 
 log "Pack plugins -> dist/"
 rm -rf dist && mkdir dist

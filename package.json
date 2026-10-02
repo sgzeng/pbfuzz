@@ -12,7 +12,7 @@
     "build": "pnpm -r run build",
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm -r run test",
-    "test:engine": "cd engine && ${PBFUZZ_PYTHON:-python3} -m pytest -q",
+    "test:engine": "cd engine && ${PBFUZZ_PYTHON:-.venv/bin/python} -m pytest -q",
     "check:clients": "node packages/dsh-pbfuzz/scripts/bundle-client.mjs && node packages/dsh-kanalyzer/scripts/build-client.mjs",
     "test:all": "pnpm run test && pnpm run check:clients && pnpm run test:engine",
     "codegen": "node scripts/codegen.mjs",

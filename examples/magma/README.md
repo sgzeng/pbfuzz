@@ -93,16 +93,41 @@ PIER then works from gdb traces alone. To give it kanalyzer's call graph and cri
 
 ## Verification status (2026-10-02)
 
-Checked on Ubuntu 24.04, clang 18, DSH `0.1.5-rc.1`, R-Fuzz/magma `pbfuzz` @ `a6ec7b91`:
+Checked on Ubuntu 24.04, clang 18, DSH `0.1.5-rc.1`, R-Fuzz/magma `pbfuzz` @ `a6ec7b91`, with a
+real `DEEPSEEK_API_KEY` — a full headless PIER run, not just the plumbing up to `PLAN`:
 
 - `build-target.sh` builds lua from scratch; the binary prints the `MAGMA: Bug LUA001 ...`
   markers on the bug path and runs the shipped seeds normally.
 - `generate-campaign.sh` output passes the plugin's own campaign validator (the check
-  `/pbfuzz run` applies) in both the default and `PREBUILT_DIR` modes.
-- In real DSH, the headless profile loads the plugin, `/pbfuzz run` loads the campaign and moves
-  it to `PLAN`; re-running resumes cleanly.
-- The engine runs Magma's 33 lua seeds against the binary: 2 reach LUA001's site, none trigger.
-- **Not run here:** a full PIER round with a model — no `DEEPSEEK_API_KEY` was available, so DSH
-  stops at the first model request (`MISSING_CREDENTIAL`). The earlier, pre-rewrite LUA001 run is
-  recorded in `docs/verification.md` (V2).
-- Other targets use the same scripts, but only lua was built in this pass.
+  `/pbfuzz run` applies).
+- `run-campaign.sh` drove the headless `headless` profile through the full PIER loop —
+  PLAN → IMPLEMENT → EXECUTE → REFLECT — to **`SUCCESS` in PIER round 1**, ~100 seconds
+  wall-clock (`started_at` to `updated_at` in `state.json`), 1 fuzz iteration, no forced-continue
+  nudges needed. The model correctly reasoned out LUA001 from the patch alone (an `int` cast of a
+  vararg index overflowing to `INT_MIN` in `findvararg`, `ldebug.c`) and had the engine confirm it
+  on the first generated input.
+- The reported PoC — engine-verified, not model-claimed: `pbfuzz_reflect`'s `success` path
+  cross-checks the model's `poc.input_path` against `metrics.json`'s own
+  `last_session.first_triggering_input` and stamps `reproduced_times` from the engine's own 3×
+  replay (`fuzzer.py`'s `_reproduce`), not anything the model asserts:
+  ```lua
+  local function pbfuzz_probe(...)
+    return debug.getlocal(1, 2147483648)
+  end
+  pbfuzz_probe(0,1,2)
+  ```
+  Reproduced by hand after the run: `$WORK/lua/out/lua <poc path>` prints
+  `MAGMA: Bug LUA001 reached` and `MAGMA: Bug LUA001 triggered` to stderr and segfaults (the engine
+  recorded `reproduced_times: 3`, 3/3).
+- `pnpm -r test` (414 tests) and the engine's `pnpm run test:engine` pytest suite (261 tests) pass;
+  one pre-existing failure, `test_corpus_unreadable_seed_is_skipped_not_fatal`, is expected when
+  run as root (`chmod 000` does not deny root read access, so the "unreadable seed" the test sets
+  up is readable after all — not a regression).
+- Found and fixed in this pass: `build.sh` built `engine/.venv` with `pip install -e engine`
+  (no `dev` extra), and `package.json`'s `test:engine` defaulted to a bare `python3`. Neither
+  venv nor system Python had `pytest` anywhere in a fresh environment, so the README's own
+  "Development" instructions (`pnpm run test:engine` after `./build.sh`) failed out of the box
+  with `No module named pytest`. Fixed by installing `engine[dev]` in `build.sh` and defaulting
+  `test:engine` to the venv it builds; regression-tested in
+  `packages/dsh-pbfuzz/tests/build-script-engine-dev-deps.spec.ts`.
+- Other targets use the same scripts, but only lua was run in this pass.
