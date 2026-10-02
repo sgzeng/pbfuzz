@@ -4,7 +4,10 @@ matters — that the generated oracle recognises real `magma_log()` stderr outpu
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -14,9 +17,11 @@ from pbfuzz_engine.adapters.magma import (
     MagmaTarget,
     build_campaign,
     campaign_to_yaml,
+    find_magma_log_condition,
     main,
     parse_bbtargets,
     parse_magma_log_condition,
+    provenance_header,
 )
 from pbfuzz_engine.campaign import load_campaign
 from pbfuzz_engine.oracle import StderrOracle
@@ -57,9 +62,8 @@ def _lua001_input(**overrides) -> MagmaAdapterInput:
 
 
 def test_build_campaign_is_confirmed_and_reuses_the_bug_id_in_the_oracle():
-    c = build_campaign(_lua001_input(), now=datetime(2026, 1, 1, tzinfo=timezone.utc))
+    c = build_campaign(_lua001_input())
     assert c["confirmed"] is True
-    assert c["confirmed_at"] == "2026-01-01T00:00:00.000Z"
     assert c["oracle"]["mode"] == "preexisting"
     assert c["oracle"]["reached_pattern"] == r"MAGMA:\ Bug\ LUA001\ reached"
     assert c["oracle"]["triggered_pattern"] == r"MAGMA:\ Bug\ LUA001\ triggered"
@@ -100,10 +104,13 @@ def test_build_campaign_with_seeds_enables_corpus():
     assert c["analysis"]["corpus"] == {"enabled": True, "seeds_dir": "/work/magma/targets/lua/corpus/lua"}
 
 
-def test_bug_patch_sets_bug_kind_patch_and_source_path():
-    c = build_campaign(_lua001_input(bug_patch="/work/magma/targets/lua/patches/bugs/LUA001.patch"))
-    assert c["bug"]["kind"] == "patch"
-    assert c["bug"]["source"] == {"path": "/work/magma/targets/lua/patches/bugs/LUA001.patch"}
+def test_bug_patch_is_named_in_the_header_not_the_document():
+    patch = "/work/magma/targets/lua/patches/bugs/LUA001.patch"
+    adapter_input = _lua001_input(bug_patch=patch)
+    c = build_campaign(adapter_input)
+    assert c["bug"] == {"targets": [{"location": "ldebug.c:197", "condition": "INT_MAX - nextra <= (n - 1)"}]}
+    header = provenance_header(adapter_input)
+    assert patch in header and "ldebug.c:197" in header
 
 
 def test_the_generated_oracle_recognises_real_magma_log_stderr():
@@ -187,3 +194,90 @@ def test_cli_fails_loudly_with_no_targets(tmp_path, capsys):
     ])
     assert code == 2
     assert "no target locations" in capsys.readouterr().err
+
+
+CAMPAIGN_SCHEMA = json.loads(
+    (Path(__file__).resolve().parents[2] / "contracts" / "campaign.schema.json").read_text()
+)
+
+
+def _undeclared_keys(doc: Any, schema: dict[str, Any], path: str = "") -> list[str]:
+    """Every key in `doc` that a closed (`additionalProperties: false`) schema object does not
+    declare. The plugin's `/pbfuzz run` validator rejects such keys, so the adapter must not emit
+    any; a dependency-free walk is enough for the object/array shapes campaign.schema.json uses."""
+    out: list[str] = []
+    if isinstance(doc, dict) and "properties" in schema:
+        props = schema["properties"]
+        for key, value in doc.items():
+            if key not in props:
+                if schema.get("additionalProperties") is False:
+                    out.append(f"{path}{key}")
+                continue
+            out.extend(_undeclared_keys(value, props[key], f"{path}{key}."))
+    elif isinstance(doc, list) and isinstance(schema.get("items"), dict):
+        for i, item in enumerate(doc):
+            out.extend(_undeclared_keys(item, schema["items"], f"{path}{i}."))
+    return out
+
+
+@pytest.mark.parametrize("overrides", [
+    {},
+    {"prebuilt_dir": "/work/BBtargets/LUA001"},
+    {"bitcode": "/work/lua.0.0.preopt.bc", "lto_libs": ("/work/libreadline.a",)},
+    {"static_analysis": False, "seeds_dir": "/work/corpus", "bug_patch": "/work/LUA001.patch"},
+])
+def test_build_campaign_emits_only_schema_declared_keys(overrides):
+    """Regression: the adapter used to emit `confirmed_at`, `notes` and
+    `analysis.static.{provider,call_stack_len,type_based_callgraph}`, none of which
+    campaign.schema.json declares — so `/pbfuzz run` refused every generated campaign."""
+    c = build_campaign(_lua001_input(**overrides))
+    assert _undeclared_keys(c, CAMPAIGN_SCHEMA) == []
+
+
+def test_no_static_analysis_disables_it_with_a_reason_and_drops_deviation_to_target_only():
+    c = build_campaign(_lua001_input(static_analysis=False))
+    assert c["analysis"]["static"]["enabled"] is False
+    assert c["analysis"]["static"]["disabled_reason"]
+    assert c["analysis"]["deviation"] == {"enabled": True, "mode": "target_only"}
+
+
+def test_prebuilt_dir_keeps_static_analysis_on_even_without_the_flag():
+    c = build_campaign(_lua001_input(static_analysis=False, prebuilt_dir="/work/BBtargets/LUA001"))
+    assert c["analysis"]["static"]["enabled"] is True
+    assert c["analysis"]["static"]["mode"] == "prebuilt"
+
+
+def test_provenance_goes_in_a_comment_header_not_the_document():
+    c = build_campaign(_lua001_input())
+    header = provenance_header(_lua001_input(), now=datetime(2026, 1, 1, tzinfo=timezone.utc))
+    text = campaign_to_yaml(c, header=header)
+    assert text.startswith("# Generated 2026-01-01T00:00:00Z by the Magma adapter")
+    assert yaml.safe_load(text) == c
+
+
+def test_find_magma_log_condition_reads_the_patched_source(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "ldebug.c").write_text("int a;\n" + LUA001_SOURCE_LINE.replace("%MAGMA_BUG%", "LUA001") + "\n")
+    assert find_magma_log_condition(tmp_path, "ldebug.c:2") == "INT_MAX - nextra <= (n - 1)"
+    assert find_magma_log_condition(tmp_path, "ldebug.c:1") is None
+    assert find_magma_log_condition(tmp_path, "missing.c:1") is None
+
+
+def test_cli_fills_conditions_from_the_source_and_supports_no_static_analysis(tmp_path):
+    (tmp_path / "ldebug.c").write_text("\n" * 196 + LUA001_SOURCE_LINE.replace("%MAGMA_BUG%", "LUA001") + "\n")
+    bbtargets = tmp_path / "BBtargets.txt"
+    bbtargets.write_text("ldebug.c:197\n")
+    binary = tmp_path / "lua"
+    binary.write_text("#!/bin/sh\n")
+    out = tmp_path / "pbfuzz.campaign.yaml"
+
+    assert main([
+        "--target-name", "lua", "--target-repo", str(tmp_path), "--bug-id", "LUA001",
+        "--binary", str(binary), "--bbtargets", str(bbtargets), "--no-static-analysis",
+        "--output-dir", str(tmp_path / "out"), "--write", str(out),
+    ]) == 0
+    doc = yaml.safe_load(out.read_text())
+    assert doc["bug"]["targets"] == [{"location": "ldebug.c:197", "condition": "INT_MAX - nextra <= (n - 1)"}]
+    assert doc["analysis"]["static"]["enabled"] is False
+    assert _undeclared_keys(doc, CAMPAIGN_SCHEMA) == []
+    assert load_campaign(out).id == "lua-lua001"

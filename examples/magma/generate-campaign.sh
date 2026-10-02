@@ -1,39 +1,73 @@
 #!/usr/bin/env bash
-# Generates a confirmed pbfuzz.campaign.yaml for one Magma bug via the Magma adapter
-# (engine/pbfuzz_engine/adapters/magma.py), then prints it. This is the headless path PLAN.md
-# §2.6 describes: "users hand-write the same yaml... The Magma adapter generates the yaml
-# automatically." Nothing here fetches or builds Magma — point the variables below at an
-# existing Magma checkout with the target already built (either freshly, or Magma's own
-# pre-built image under fuzzers/pre-built/<target>/).
+# Generates a confirmed pbfuzz campaign yaml for one Magma bug via the Magma adapter
+# (engine/pbfuzz_engine/adapters/magma.py). Point it at a target built by build-target.sh:
 #
-# Verified against magma/fuzzers/pre-built/lua/{clang_bc/lua/lua, BBtargets/LUA001} (V2,
-# docs/verification.md) — defaults below match that exact run.
+#   WORK=$PWD/magma-work ./generate-campaign.sh                  # TARGET_NAME=lua BUG_ID=LUA001
+#   WORK=... TARGET_NAME=libpng BUG_ID=PNG001 ./generate-campaign.sh
+#
+# Every path can be overridden on its own (REPO, BINARY, RUN_ARGS, SEEDS_DIR, BUG_PATCH,
+# BBTARGETS, OUTPUT); see below. Prints the path of the written yaml on stdout.
+#
+# Static analysis: off by default — the campaign runs on gdb traces alone. Set PREBUILT_DIR to a
+# directory of KAMain outputs (Magma's SKIP_STATIC_ANALYSIS path, or a previous kanalyzer run), or
+# STATIC_ANALYSIS=1 to have kanalyzer build bitcode itself (needs ./install.sh --with-kanalyzer).
 set -euo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PBFUZZ_ROOT="$(cd "$HERE/../.." && pwd)"
 
-MAGMA_ROOT="${MAGMA_ROOT:?set MAGMA_ROOT to a Magma checkout, e.g. /mnt/work/pbfuzz/magma}"
+WORK="${WORK:-$PWD/magma-work}"
 TARGET_NAME="${TARGET_NAME:-lua}"
 BUG_ID="${BUG_ID:-LUA001}"
-# Magma's own pre-built image layout (fuzzers/pre-built/<target>/...); point PREBUILT_DIR /
-# BINARY / BBTARGETS elsewhere for a fresh native build instead (see README.md).
-PREBUILT="${PREBUILT:-$MAGMA_ROOT/fuzzers/pre-built/$TARGET_NAME}"
-BINARY="${BINARY:-$PREBUILT/clang_bc/$TARGET_NAME/$TARGET_NAME}"
-BBTARGETS="${BBTARGETS:-$PREBUILT/BBtargets/$BUG_ID/BBtargets.txt}"
-PREBUILT_DIR="${PREBUILT_DIR:-$PREBUILT/BBtargets/$BUG_ID}"
-SEEDS_DIR="${SEEDS_DIR:-$MAGMA_ROOT/targets/$TARGET_NAME/corpus/$TARGET_NAME}"
-BUG_PATCH="${BUG_PATCH:-$MAGMA_ROOT/targets/$TARGET_NAME/patches/bugs/$BUG_ID.patch}"
-OUTPUT="${OUTPUT:-$MAGMA_ROOT/targets/$TARGET_NAME/pbfuzz.campaign.yaml}"
+TARGET="${TARGET:-$WORK/$TARGET_NAME}"
+[ -f "$TARGET/configrc" ] || { echo "error: $TARGET is not a built Magma target; run build-target.sh first" >&2; exit 1; }
 
-"${PBFUZZ_PYTHON:-python3}" -m pbfuzz_engine.adapters.magma \
-    --target-name "$TARGET_NAME" \
-    --target-repo "$MAGMA_ROOT/targets/$TARGET_NAME" \
-    --bug-id "$BUG_ID" \
-    --binary "$BINARY" \
-    --bbtargets "$BBTARGETS" \
-    --bug-patch "$BUG_PATCH" \
-    --prebuilt-dir "$PREBUILT_DIR" \
-    --seeds-dir "$SEEDS_DIR" \
-    --output-dir "$MAGMA_ROOT/targets/$TARGET_NAME/.pbfuzz/$TARGET_NAME-$(echo "$BUG_ID" | tr '[:upper:]' '[:lower:]')" \
-    --write "$OUTPUT"
+PROGRAMS=()
+# shellcheck disable=SC1091
+. "$TARGET/configrc"
+PROGRAM="${PROGRAM:-${PROGRAMS[0]}}"
+args_var="${PROGRAM}_ARGS"
+RUN_ARGS="${RUN_ARGS:-${!args_var:-@@}}"   # configrc's <program>_ARGS, as magma/run.sh uses them
 
-echo "wrote $OUTPUT" >&2
+REPO="${REPO:-$TARGET/repo}"
+SRC_DIR="${SRC_DIR:-$REPO}"                # where the patched sources live (sqlite3: $TARGET/work)
+BINARY="${BINARY:-$TARGET/out/$PROGRAM}"
+SEEDS_DIR="${SEEDS_DIR:-$TARGET/corpus/$PROGRAM}"
+BUG_PATCH="${BUG_PATCH:-$TARGET/patches/bugs/$BUG_ID.patch}"
+BBTARGETS="${BBTARGETS:-${PREBUILT_DIR:+$PREBUILT_DIR/BBtargets.txt}}"
+BBTARGETS="${BBTARGETS:-$TARGET/BBtargets/$BUG_ID/BBtargets.txt}"
+OUTPUT="${OUTPUT:-$TARGET/campaigns/$BUG_ID.campaign.yaml}"
+PY="${PBFUZZ_PYTHON:-$PBFUZZ_ROOT/engine/.venv/bin/python}"
+
+[ -x "$BINARY" ] || { echo "error: no binary at $BINARY (PROGRAM=$PROGRAM)" >&2; exit 1; }
+[ -f "$BUG_PATCH" ] || { echo "error: no patch for $BUG_ID at $BUG_PATCH" >&2; exit 1; }
+[ -x "$PY" ] || { echo "error: no engine Python at $PY; run ./build.sh in $PBFUZZ_ROOT or set PBFUZZ_PYTHON" >&2; exit 1; }
+
+# BBtargets.txt: every MAGMA_LOG("<BUG_ID>", ...) call site as basename:line — the same grep
+# magma/fuzzers/pbfuzz/instrument.sh feeds KAMain's -target-list.
+if [ ! -s "$BBTARGETS" ]; then
+  mkdir -p "$(dirname "$BBTARGETS")"
+  grep -nR "MAGMA_LOG(\"${BUG_ID}\"" "$SRC_DIR" --include='*.c' --include='*.h' --include='*.cc' --include='*.cpp' \
+    | awk -F: '{print $1":"$2}' | sed 's/.*\///' > "$BBTARGETS" || true
+  [ -s "$BBTARGETS" ] || { echo "error: no MAGMA_LOG(\"$BUG_ID\" ...) in $SRC_DIR — was the bug patch applied?" >&2; exit 1; }
+fi
+
+static_args=(--no-static-analysis)
+if [ -n "${PREBUILT_DIR:-}" ]; then static_args=(--prebuilt-dir "$PREBUILT_DIR")
+elif [ "${STATIC_ANALYSIS:-0}" = 1 ]; then static_args=()
+fi
+corpus_args=()
+[ -d "$SEEDS_DIR" ] && corpus_args=(--seeds-dir "$SEEDS_DIR")
+
+"$PY" -m pbfuzz_engine.adapters.magma \
+  --target-name "$TARGET_NAME" \
+  --target-repo "$REPO" \
+  --bug-id "$BUG_ID" \
+  --binary "$BINARY" \
+  --run-cmd "$BINARY ${RUN_ARGS}" \
+  --bbtargets "$BBTARGETS" \
+  --bug-patch "$BUG_PATCH" \
+  "${static_args[@]}" \
+  "${corpus_args[@]}" \
+  --write "$OUTPUT"
+
+echo "$OUTPUT"
