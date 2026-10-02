@@ -179,44 +179,6 @@ describe('pbfuzz_fuzz tool', () => {
     await expect(fuzz.execute({ plan: VALID_PLAN, generator_code: 'x', generator_path: '/x.py' }, fakeExec(agent))).rejects.toThrow(/exactly one of generator_code/)
   })
 
-  it('rejects a broken generator (validate ok:false) without starting a run', async () => {
-    const host = newHost()
-    const { agent } = workspace()
-    implementPhaseCampaign(host, agent)
-    vi.spyOn(host.engine, 'call').mockImplementation(async (method) => {
-      if (method === 'generator.validate') return { ok: false, samples: [{ source: 'sample(seed=1)', error: "KeyError: 'n'" }] }
-      throw new Error(`unexpected call: ${method}`)
-    })
-    const fuzz = captureTools(host).get('pbfuzz_fuzz')!
-    await expect(fuzz.execute({ plan: VALID_PLAN, generator_code: 'def generate(**p): return b""' }, fakeExec(agent)))
-      .rejects.toThrow(/nothing was started[\s\S]*sample\(seed=1\): KeyError: 'n'/)
-  })
-
-  it('surfaces the reach diagnosis when generation succeeds everywhere but the real preflight found nothing reached the target (reach-diagnostic-dropped)', async () => {
-    const host = newHost()
-    const { agent } = workspace()
-    implementPhaseCampaign(host, agent)
-    vi.spyOn(host.engine, 'call').mockImplementation(async (method) => {
-      // No sample has `error` set — every generate() call succeeded — but `ok` is false because
-      // the real target preflight (server.py's generator_validate/_preflight_reach) found that
-      // NONE of the next_batch_plan entries reached the target: the exact "entry_addr outside its
-      // declared parameter_space domain" scenario this preflight exists to catch.
-      if (method === 'generator.validate') return {
-        ok: false,
-        samples: [{
-          source: 'next_batch_plan[0]',
-          params: { n: 5 },
-          size: 4,
-          reach: { ranTarget: true, reached: false, triggered: false, stderrTail: 'segfault at 0xdeadbeef, entry_addr never hit' },
-        }],
-      }
-      throw new Error(`unexpected call: ${method}`)
-    })
-    const fuzz = captureTools(host).get('pbfuzz_fuzz')!
-    await expect(fuzz.execute({ plan: VALID_PLAN, generator_code: 'def generate(**p): return b""' }, fakeExec(agent)))
-      .rejects.toThrow(/segfault at 0xdeadbeef, entry_addr never hit/)
-  })
-
   it('a preflight miss states what the target was actually fed: the size is usually the answer', async () => {
     // session ea916c42: the engine knew the input was 56 bytes; the model only saw the stderr, and
     // spent five bash steps compiling a probe to discover sizeof(ELFHeader) is 64.

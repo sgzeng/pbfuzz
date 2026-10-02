@@ -105,17 +105,11 @@ describe('query(): no second KAMain run, no re-parsing', () => {
     utimesSync(path, PINNED, PINNED)
   }
 
-  it('reuses the parsed dump when neither size nor mtime moved', async () => {
+  it('reuses the parsed dump while size and mtime hold, and re-reads it once mtime moves', async () => {
     utimesSync(join(analysisDir(), 'function_info.txt'), PINNED, PINNED)
     expect(await functionAt()).toEqual(['target'])
     rewriteInvisibly('function_info.txt', 'target', 'tarxet')
     expect(await functionAt()).toEqual(['target'])
-  })
-
-  it('re-reads a dump once its mtime moves', async () => {
-    utimesSync(join(analysisDir(), 'function_info.txt'), PINNED, PINNED)
-    expect(await functionAt()).toEqual(['target'])
-    rewriteInvisibly('function_info.txt', 'target', 'tarxet')
     const when = new Date(Date.now() + 5_000)
     utimesSync(join(analysisDir(), 'function_info.txt'), when, when)
     expect(await functionAt()).toEqual(['tarxet'])

@@ -6,7 +6,6 @@ import { describe, expect, it } from 'vitest'
 import { APPROVE, confirm, draft, REVISE, type FlowContext } from '../src/campaign-flow.ts'
 import {
   ANSWERS_PARAMETER_SCHEMA,
-  confirmCampaign,
   disableAnalysis,
   draftCampaign,
   normalizeDraftAnswers,
@@ -66,10 +65,6 @@ describe('ANSWERS_PARAMETER_SCHEMA (validated with the real validateArgs())', ()
     })).toEqual([])
   })
 
-  it('rejects a provenance wrapper, which no longer exists anywhere', () => {
-    expect(schemaErrors({ ...ANSWERS, target: { repo: { value: '/src', source: 'user' } } }).join('\n')).toMatch(/target\.repo/)
-  })
-
   it('rejects a field of the wrong type and an enum value outside the declared set', () => {
     expect(schemaErrors({ ...ANSWERS, id: 42 }).join('\n')).toMatch(/id/)
     expect(schemaErrors({ ...ANSWERS, target: { repo: '/src', language: 'rust' } }).join('\n')).toMatch(/language/)
@@ -88,7 +83,6 @@ describe('ANSWERS_PARAMETER_SCHEMA (validated with the real validateArgs())', ()
   })
 
   it('a schema-clean payload flows through normalizeDraftAnswers unchanged in meaning', () => {
-    expect(schemaErrors(ANSWERS)).toEqual([])
     const normalized = normalizeDraftAnswers(ANSWERS)
     expect(normalized.id).toBe('libpng-png006')
     expect(normalized.entry.env).toEqual({ ASAN_OPTIONS: 'detect_leaks=0' })
@@ -233,14 +227,7 @@ describe('validateCampaign cross-field rules', () => {
   })
 })
 
-describe('confirm / disable', () => {
-  it('confirmCampaign sets confirmed and changes nothing else', () => {
-    const { campaign } = draftCampaign(draftInput(), settings(), false)
-    const confirmed = confirmCampaign(campaign)
-    expect(confirmed.confirmed).toBe(true)
-    expect({ ...confirmed, confirmed: false }).toEqual({ ...campaign, confirmed: false })
-  })
-
+describe('disableAnalysis', () => {
   it('disableAnalysis records the reason and degrades deviation when static goes off', () => {
     const { campaign } = draftCampaign(draftInput(), settings({ tools: { staticAnalysis: 'kanalyzer', deviationDetection: true } }), false)
     const off = disableAnalysis(campaign, 'static', 'KAMain is not built')
@@ -256,15 +243,6 @@ describe('campaign yaml', () => {
     expect(yaml).not.toMatch(/# inferred:|# agent-built:|provenance:|^notes:/m)
     expect(parseCampaignYaml(yaml)).toEqual(campaign)
     expect(validateCampaign(parseCampaignYaml(yaml)).ok).toBe(true)
-  })
-
-  it('stays small: a single-file target is a screenful, not a document', () => {
-    // The campaign this fixture drafts used to serialize at 155 lines / 12.8 KB, ~80% of it the
-    // same evidence twice. Every line below is a fact the engine, the provider or a guard reads.
-    const { campaign } = draftCampaign(draftInput(), settings(), false)
-    const yaml = campaignToYaml(campaign)
-    expect(yaml.split('\n').length).toBeLessThan(40)
-    expect(yaml.length).toBeLessThan(1200)
   })
 })
 

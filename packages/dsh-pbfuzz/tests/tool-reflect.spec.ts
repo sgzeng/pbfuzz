@@ -7,7 +7,7 @@
  * `advancePhase`'s budget enforcement actually produced (possibly STOPPED) without re-implementing
  * that check here.
  */
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -114,19 +114,14 @@ describe('pbfuzz_reflect tool', () => {
     expect(result.poc).toEqual({ input_path: pocPath, run_cmd: `./toy ${pocPath}`, parameters: { n: 7, seed: 1 }, reproduced_times: 3 })
   })
 
-  it('success with no poc and no engine trigger is still refused', async () => {
-    const host = newHost()
-    const { agent } = workspace()
-    reflectPhaseCampaign(host, agent)
-    const reflect = captureTools(host).get('pbfuzz_reflect')!
-    await expect(reflect.execute({ decision: 'success' }, execWithConcludeSpy(agent))).rejects.toThrow(/needs real engine evidence/)
-  })
-
-  it('success: refuses to advance without real engine evidence (triggered_count=0)', async () => {
+  it.each([
+    ['metrics.json records no trigger', (active: ActiveCampaign) => { writeMetrics(active, 0) }],
+    ['no metrics.json at all', () => {}],
+  ])('success: refuses to advance without real engine evidence (%s)', async (_case, seedMetrics) => {
     const host = newHost()
     const { agent } = workspace()
     const active = reflectPhaseCampaign(host, agent)
-    writeMetrics(active, 0)
+    seedMetrics(active)
     const reflect = captureTools(host).get('pbfuzz_reflect')!
     await expect(reflect.execute({
       decision: 'success',
@@ -194,24 +189,18 @@ describe('pbfuzz_reflect tool', () => {
     expect(host.state(active)?.phase).toBe('REFLECT')
   })
 
-  it('stop: advances to STOPPED with the given reason, and a default when none is given', async () => {
+  it.each([
+    ['the given reason', { stop_reason: 'gave up: no reaching input after 5 rounds' }, 'gave up: no reaching input after 5 rounds'],
+    ['"agent-requested stop" when none is given', {}, 'agent-requested stop'],
+  ])('stop: advances to STOPPED recording %s', async (_case, extra, expected) => {
     const host = newHost()
     const { agent } = workspace()
     const active = reflectPhaseCampaign(host, agent)
     const reflect = captureTools(host).get('pbfuzz_reflect')!
-    const result = await reflect.execute({ decision: 'stop', stop_reason: 'gave up: no reaching input after 5 rounds' }, execWithConcludeSpy(agent)) as { phase: string; stop_reason: string }
+    const result = await reflect.execute({ decision: 'stop', ...extra }, execWithConcludeSpy(agent)) as { phase: string; stop_reason: string }
     expect(result.phase).toBe('STOPPED')
-    expect(result.stop_reason).toBe('gave up: no reaching input after 5 rounds')
-    expect(host.state(active)?.stop_reason).toBe('gave up: no reaching input after 5 rounds')
-  })
-
-  it('stop: defaults the reason to "agent-requested stop" when omitted', async () => {
-    const host = newHost()
-    const { agent } = workspace()
-    reflectPhaseCampaign(host, agent)
-    const reflect = captureTools(host).get('pbfuzz_reflect')!
-    const result = await reflect.execute({ decision: 'stop' }, execWithConcludeSpy(agent)) as { stop_reason: string }
-    expect(result.stop_reason).toBe('agent-requested stop')
+    expect(result.stop_reason).toBe(expected)
+    expect(host.state(active)?.stop_reason).toBe(expected)
   })
 
   it('next_round: within budget, moves back to PLAN and bumps nothing extra beyond what advancePhase does', async () => {

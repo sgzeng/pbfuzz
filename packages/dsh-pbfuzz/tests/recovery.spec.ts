@@ -17,18 +17,14 @@ const diagnosis: Diagnosis = {
 }
 
 describe('offerRecovery (D5)', () => {
-  it('headless: returns kind "headless" with the log block, and never sets process.exitCode', async () => {
+  it.each([
+    ['headless run', true],
+    ['no asker composed', false],
+  ])('%s: returns kind "headless" with the log block, and never sets process.exitCode', async (_label, headless) => {
     const before = process.exitCode
-    const choice = await offerRecovery(diagnosis, undefined, { headless: true })
+    const choice = await offerRecovery(diagnosis, undefined, { headless })
     expect(choice.kind).toBe('headless')
     if (choice.kind === 'headless') expect(choice.log).toContain('self-check: oracle failed')
-    expect(process.exitCode).toBe(before)
-  })
-
-  it('no asker composed (asker undefined) behaves the same as headless, and never sets process.exitCode', async () => {
-    const before = process.exitCode
-    const choice = await offerRecovery(diagnosis, undefined, { headless: false })
-    expect(choice.kind).toBe('headless')
     expect(process.exitCode).toBe(before)
   })
 

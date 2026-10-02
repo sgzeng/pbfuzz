@@ -213,22 +213,3 @@ def test_target_core_dumps_are_disabled_even_when_the_environment_allows_them(tm
     assert seen_limit == [0, 0], "the spawned child did not have RLIMIT_CORE forced to (0, 0)"
     assert result.returncode == -signal.SIGABRT
     assert not list(tmp_path.glob("core*")), "a core file was left behind under the target's cwd"
-
-
-# -- rlimit-core-apport: RLIMIT_CORE=0 does not stop a PIPE `core_pattern` handler -------------
-#
-# No new automated test here on purpose. The investigated code-level fix -- a `preexec_fn` that
-# also calls `prctl(PR_SET_DUMPABLE, 0)` -- was verified NOT to work for this function (see
-# `proc._disable_core_dumps`'s docstring): the flag lives on the `mm_struct`, and `execve()`
-# allocates a fresh one for the new program image, resetting it back to 1 before the target
-# ever runs. Since no runtime behavior changed (this function still only sets `RLIMIT_CORE`,
-# exactly as the test above already covers), there is no new code path to regression-test --
-# the fix here is `_disable_core_dumps`'s docstring, which the RLIMIT_CORE/apport interaction
-# it now documents cannot be captured as a fast, non-flaky assertion (it depends on wall-clock
-# cost under this host's specific `core_pattern`, which a unit test should not hardcode).
-# Manual verification (this host, `core_pattern = |/usr/share/apport/apport ...`):
-#   * baseline `os.abort()`, no limit:      ~2.5s/crash, `/var/crash/*.crash` written
-#   * `os.abort()` under `ulimit -c 0`:     ~2.5-2.8s/crash, `/var/crash/*.crash` STILL written
-#   * same, but with `PR_SET_DUMPABLE=0` set in the SAME process before `abort()` (no `exec()`
-#     in between): ~0.15s/crash, nothing written -- confirms the mechanism, but does not apply
-#     to this function, which always has an `exec()` in between.

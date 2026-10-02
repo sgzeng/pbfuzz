@@ -77,11 +77,9 @@ describe('prepare(): the analysis build is isolated from the caller\'s tree', ()
     }
   })
 
-  it('keeps its own directory out of git and out of the copy', async () => {
+  it('keeps its own directory out of the user\'s git history', async () => {
     await runtime.prepare(request())
-    const root = join(ws.repo, KANALYZER_DIR)
-    expect(readFileSync(join(root, '.gitignore'), 'utf8').trim()).toBe('*')
-    expect(existsSync(join(root, 'tree', KANALYZER_DIR))).toBe(false)
+    expect(readFileSync(join(ws.repo, KANALYZER_DIR, '.gitignore'), 'utf8').trim()).toBe('*')
   })
 
   it('maps a cwd inside the checkout to the same place in the copy', async () => {

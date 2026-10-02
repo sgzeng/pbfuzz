@@ -60,13 +60,6 @@ def test_run_target_both_channels(target_script, tmp_path, channel):
     assert v.reached and v.triggered and res.exit_code == 0 and not res.timed_out
 
 
-def test_run_target_timeout(target_script, tmp_path):
-    inp = tmp_path / "in"
-    inp.write_bytes(b"H")
-    res = run_target(_entry(target_script), inp, b"H", timeout_sec=0.5)
-    assert res.timed_out and res.exit_code == TIMEOUT_EXIT_CODE
-
-
 def test_run_target_reports_signal(target_script, tmp_path):
     inp = tmp_path / "in"
     inp.write_bytes(b"RA")

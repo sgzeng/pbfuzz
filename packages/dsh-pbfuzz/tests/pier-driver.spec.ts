@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -158,17 +158,8 @@ describe('installPierDriver: agent/turn-stopping nudge', () => {
     const message = steered[0] as { content: { text: string }[]; source: { form: string } }
     expect(message.content[0]?.text).toContain('continue the PIER loop')
     expect(message.source.form).toBe('instructions')
-  })
-
-  it('names the campaign id and the pier round the nudge was computed for', () => {
-    const { root } = workspace('PLAN')
-    const host = newHost()
-    const fake = fakeCtx()
-    installPierDriver(fake.ctx as never, host)
-    const { agent, steered } = fakeAgent(root)
-    fake.emit('agent/turn-stopping', { agent, turn: 1, signal: new AbortController().signal })
-    const message = steered[0] as { content: { text: string }[] }
-    // workspace('PLAN') writes state.json with campaign_id 'p1' and pier_round 0.
+    // The nudge names the campaign id and pier round it was computed for (a stale message is
+    // recognisable): workspace('PLAN') writes state.json with campaign_id 'p1' and pier_round 0.
     expect(message.content[0]?.text).toContain('campaign p1')
     expect(message.content[0]?.text).toContain('round 0')
   })
@@ -254,7 +245,10 @@ describe('installPierDriver: consecutive-forced-continue cap', () => {
     expect(state.stop_reason).toContain('consecutive forced-continue cap')
   })
 
-  it('a real user message re-arms the counter', () => {
+  it.each([
+    ['a real user message', (emit: (event: string, payload: unknown) => void, agent: unknown) => { emit('agent/inbox/inserted', { agent, message: { source: { kind: 'user' }, content: [{ type: 'text', text: 'go' }] } }) }],
+    ['agent/error', (emit: (event: string, payload: unknown) => void, agent: unknown) => { emit('agent/error', { agent, turn: 2, step: 1, error: new Error('x') }) }],
+  ])('%s re-arms the counter', (_event, rearm) => {
     const { root } = workspace('PLAN')
     const host = newHost({ budget: { maxConsecutiveForcedContinues: 1 } })
     const fake = fakeCtx()
@@ -263,22 +257,8 @@ describe('installPierDriver: consecutive-forced-continue cap', () => {
     fake.emit('agent/turn-stopping', { agent, turn: 1, signal: new AbortController().signal }) // count 1: nudges
     fake.emit('agent/turn-stopping', { agent, turn: 2, signal: new AbortController().signal }) // count 2 > cap: stops
     expect(steered).toHaveLength(1)
-    fake.emit('agent/inbox/inserted', { agent, message: { source: { kind: 'user' }, content: [{ type: 'text', text: 'go' }] } })
+    rearm(fake.emit, agent)
     fake.emit('agent/turn-stopping', { agent, turn: 3, signal: new AbortController().signal }) // re-armed: count 1 again
-    expect(steered).toHaveLength(2)
-  })
-
-  it('agent/error also re-arms the counter', () => {
-    const { root } = workspace('PLAN')
-    const host = newHost({ budget: { maxConsecutiveForcedContinues: 1 } })
-    const fake = fakeCtx()
-    installPierDriver(fake.ctx as never, host)
-    const { agent, steered } = fakeAgent(root)
-    fake.emit('agent/turn-stopping', { agent, turn: 1, signal: new AbortController().signal })
-    fake.emit('agent/turn-stopping', { agent, turn: 2, signal: new AbortController().signal })
-    expect(steered).toHaveLength(1)
-    fake.emit('agent/error', { agent, turn: 2, step: 1, error: new Error('x') })
-    fake.emit('agent/turn-stopping', { agent, turn: 3, signal: new AbortController().signal })
     expect(steered).toHaveLength(2)
   })
 })
@@ -337,25 +317,17 @@ describe('installPierDriver: job-done wakeup fallback', () => {
 })
 
 describe('installPierDriver: headless /pbfuzz run bootstrap', () => {
-  it('dispatches "/pbfuzz run <path>" through the real command registry, once per user message', () => {
+  it.each([
+    ['"/pbfuzz run <path>" verbatim', '/pbfuzz run /abs/c.yaml'],
+    ['the natural-language "run campaign <path>"', 'run campaign /abs/c.yaml'],
+  ])('dispatches %s as "/pbfuzz run <path>" through the command registry', (_form, text) => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'pbfuzz-pier-headless-')))
     const host = newHost()
     const commands = fakeCommands()
     const fake = fakeCtx(undefined, commands)
     installPierDriver(fake.ctx as never, host)
     const { agent } = fakeAgent(root)
-    fake.emit('agent/inbox/inserted', { agent, message: { source: { kind: 'user' }, content: [{ type: 'text', text: '/pbfuzz run /abs/c.yaml' }] } })
-    expect(commands.calls).toEqual([{ agent, line: '/pbfuzz run /abs/c.yaml' }])
-  })
-
-  it('translates the natural-language "run campaign <path>" into the same command line', () => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'pbfuzz-pier-headless-')))
-    const host = newHost()
-    const commands = fakeCommands()
-    const fake = fakeCtx(undefined, commands)
-    installPierDriver(fake.ctx as never, host)
-    const { agent } = fakeAgent(root)
-    fake.emit('agent/inbox/inserted', { agent, message: { source: { kind: 'user' }, content: [{ type: 'text', text: 'run campaign /abs/c.yaml' }] } })
+    fake.emit('agent/inbox/inserted', { agent, message: { source: { kind: 'user' }, content: [{ type: 'text', text }] } })
     expect(commands.calls).toEqual([{ agent, line: '/pbfuzz run /abs/c.yaml' }])
   })
 

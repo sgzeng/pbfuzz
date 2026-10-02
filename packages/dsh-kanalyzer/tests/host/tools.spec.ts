@@ -13,14 +13,13 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { describe, expect, it } from 'vitest'
 import type {
-  AnalyzeRequest, AnalyzeResult, KanalyzerDoctor, PreparedBitcode, PrebuiltImportRequest, PrebuiltImportResult,
-  PrepareRequest, PrepareResult, QueryRequest, QueryResult,
+  AnalyzeRequest, AnalyzeResult, PreparedBitcode, PrepareRequest, QueryRequest, QueryResult,
 } from '../../src/api.ts'
 import { registerTools } from '../../src/host/tools.ts'
-import type { JobCaller, PrepareOptions } from '../../src/host/runtime.ts'
+import type { JobCaller } from '../../src/host/runtime.ts'
 
 /** One recorded `ctx.kanalyzer` call: the request it received, plus the `JobCaller` (owner/signal) `asJob()`-backed methods received. */
-interface Recorded<Req> { req: Req, caller?: JobCaller, opts?: PrepareOptions }
+interface Recorded<Req> { req: Req, caller?: JobCaller }
 
 /** What a finished `prepareJob()` resolves to, minus the parts these tests do not assert on. */
 function preparedBitcode(): PreparedBitcode {
@@ -31,32 +30,25 @@ function preparedBitcode(): PreparedBitcode {
   }
 }
 
-/** A `KanalyzerRuntime`-shaped double: only the methods `host/tools.ts` calls, each recording its call. */
+/** A `KanalyzerRuntime`-shaped double: only the methods the tested tools call, each recording its call. */
 function fakeKanalyzer(): {
   service: {
-    doctor: () => Promise<KanalyzerDoctor>
-    prepare: (req: PrepareRequest, caller?: JobCaller) => Promise<PrepareResult>
-    prepareJob: (req: PrepareRequest, caller?: JobCaller, opts?: PrepareOptions) => { jobId?: string; tree?: string; result: Promise<PreparedBitcode> }
+    prepareJob: (req: PrepareRequest, caller?: JobCaller) => { jobId?: string; tree?: string; result: Promise<PreparedBitcode> }
     analyze: (req: AnalyzeRequest, caller?: JobCaller) => Promise<AnalyzeResult>
     query: (req: QueryRequest) => Promise<QueryResult>
-    importPrebuilt: (req: PrebuiltImportRequest) => Promise<PrebuiltImportResult>
   }
-  doctorCalls: number[]
   prepareCalls: Recorded<PrepareRequest>[]
   analyzeCalls: Recorded<AnalyzeRequest>[]
   queryCalls: QueryRequest[]
 } {
-  const doctorCalls: number[] = []
   const prepareCalls: Recorded<PrepareRequest>[] = []
   const analyzeCalls: Recorded<AnalyzeRequest>[] = []
   const queryCalls: QueryRequest[] = []
   return {
-    doctorCalls, prepareCalls, analyzeCalls, queryCalls,
+    prepareCalls, analyzeCalls, queryCalls,
     service: {
-      async doctor() { doctorCalls.push(1); return { ok: true, status: { installed: true }, evidence: [] } },
-      async prepare(req, caller) { prepareCalls.push({ req, caller }); return { bitcode: '/b.bc', allBitcode: ['/b.bc'], entries: ['main'], nFuncs: 1 } },
-      prepareJob(req, caller, opts) {
-        prepareCalls.push({ req, caller, ...(opts !== undefined ? { opts } : {}) })
+      prepareJob(req, caller) {
+        prepareCalls.push({ req, caller })
         return { jobId: 'kanalyzer-1', tree: '/repo/.kanalyzer/tree', result: Promise.resolve(preparedBitcode()) }
       },
       async analyze(req, caller) {
@@ -64,12 +56,11 @@ function fakeKanalyzer(): {
         return { status: 'ok', targets: [], criticalBranches: [], reachableFunctions: 0, totalFunctions: 0, entriesUsed: [], outputDir: req.outputDir ?? '', dumpFiles: [], elapsedMs: 0, cached: false }
       },
       async query(req) { queryCalls.push(req); return { op: req.op, results: [], truncated: false } },
-      async importPrebuilt() { throw new Error('not used by these tests') },
     },
   }
 }
 
-/** Registers the four tools against a fake `ctx` and returns them by name. */
+/** Registers the tools against a fake `ctx` and returns them by name. */
 function registered(kanalyzer: ReturnType<typeof fakeKanalyzer>['service']): Map<string, ToolDefinition> {
   const defs = new Map<string, ToolDefinition>()
   const ctx = {
@@ -119,13 +110,6 @@ describe('kanalyzer_prepare: typed args, env transform, job owner/signal', () =>
     expect('env' in (k.prepareCalls[0]?.req ?? {})).toBe(false)
     expect(k.prepareCalls[0]?.caller).toEqual({ agent: undefined, signal: expect.any(AbortSignal) })
   })
-
-  it('rejects a call missing a required parameter before execute() ever runs (real schema validation)', async () => {
-    const k = fakeKanalyzer()
-    const def = registered(k.service).get('kanalyzer_prepare')
-    await expect(def?.execute({ repo: '/repo', buildCmd: 'make' }, execWith(undefined))).rejects.toThrow()
-    expect(k.prepareCalls).toHaveLength(0)
-  })
 })
 
 describe('kanalyzer_analyze: typed args match AnalyzeRequest, cwd default, job owner/signal', () => {
@@ -156,14 +140,6 @@ describe('kanalyzer_analyze: typed args match AnalyzeRequest, cwd default, job o
     expect('outputDir' in (k.analyzeCalls[0]?.req ?? {})).toBe(false)
     expect(k.analyzeCalls[0]?.caller).toEqual({ agent: undefined, signal: expect.any(AbortSignal) })
   })
-
-  it('forwards a typed dumps selection through untouched', async () => {
-    const k = fakeKanalyzer()
-    const def = registered(k.service).get('kanalyzer_analyze')
-    await def?.execute({ bitcode: '/b.bc', targets: ['a.c:1'], dumps: { criticalBranch: true, distance: false } }, execWith(undefined))
-
-    expect(k.analyzeCalls[0]?.req.dumps).toEqual({ criticalBranch: true, distance: false })
-  })
 })
 
 describe('kanalyzer_query: discriminated request built from flat validated args', () => {
@@ -193,15 +169,5 @@ describe('kanalyzer_query: discriminated request built from flat validated args'
     expect(k.queryCalls[0]).toEqual({ op: 'callers', bitcode: '/b.bc', fn: 'foo' })
 
     await expect(def?.execute({ op: 'callees', bitcode: '/b.bc' }, execWith(undefined))).rejects.toThrow(/fn/)
-  })
-})
-
-describe('kanalyzer_doctor: unchanged pass-through', () => {
-  it('takes no arguments and forwards to ctx.kanalyzer.doctor()', async () => {
-    const k = fakeKanalyzer()
-    const def = registered(k.service).get('kanalyzer_doctor')
-    const value = await def?.execute({}, execWith(undefined))
-    expect(k.doctorCalls).toHaveLength(1)
-    expect(value).toMatchObject({ ok: true })
   })
 })

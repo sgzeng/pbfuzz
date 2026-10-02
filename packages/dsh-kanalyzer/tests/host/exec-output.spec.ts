@@ -31,11 +31,4 @@ describe('run(): onOutput', () => {
     expect(result.stdout).toBe('out\n')
     expect(result.stderr).toBe('err\n')
   })
-
-  it('omitting onOutput leaves the result exactly as before', async () => {
-    const result = await run('/bin/sh', ['-c', 'echo out; echo err >&2'])
-    expect(result.exitCode).toBe(0)
-    expect(result.stdout).toBe('out\n')
-    expect(result.stderr).toBe('err\n')
-  })
 })

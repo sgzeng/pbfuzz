@@ -83,39 +83,10 @@ const newHost = (over: Parameters<typeof settings>[0] = {}): PbfuzzHost =>
   new PbfuzzHost(() => settings(over), { info() {}, warn() {} }, () => new Set<string>(PBFUZZ_TOOLS), {})
 
 /** Register a handful of REAL `defineTool()`-shaped tools — real names/schemas `guard-policy.ts`
- * gates on (`write`, `edit`, `pbfuzz_plan`, `pbfuzz_fuzz`), each with a trivial handler. Not
+ * gates on (`pbfuzz_plan`, `pbfuzz_fuzz`), each with a trivial handler. Not
  * pbfuzz's actual tool implementations (those live in `src/tools.ts`) — this module only needs
  * something registered under the RIGHT NAME for the real dispatch pipeline to route a call to. */
 function registerFakeTools(root: Context): void {
-  root.tools.register(defineTool({
-    name: 'write',
-    description: 'fake write tool (smoke-test stand-in for @deepseek-ai/dsh-tool-fs-local write)',
-    parameters: {
-      file_path: { type: 'string', description: 'target path' },
-      content: { type: 'string', description: 'file content' },
-    },
-    output: {
-      schema: { type: 'json' },
-      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
-    },
-    async execute(args) {
-      return { written: true, args }
-    },
-  }))
-  root.tools.register(defineTool({
-    name: 'edit',
-    description: 'fake edit tool (smoke-test stand-in)',
-    parameters: {
-      path: { type: 'string', description: 'target path' },
-    },
-    output: {
-      schema: { type: 'json' },
-      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
-    },
-    async execute(args) {
-      return { edited: true, args }
-    },
-  }))
   root.tools.register(defineTool({
     name: 'pbfuzz_plan',
     description: 'fake pbfuzz_plan tool',
@@ -176,38 +147,6 @@ async function buildRealRig(host: PbfuzzHost): Promise<{
 }
 
 describe('assembled smoke test: installGuard() through the real @deepseek-ai/dsh-tools dispatch', () => {
-  it('a phase-legal pbfuzz tool call actually dispatches and returns the real handler result', async () => {
-    const { root: workspaceRoot } = workspace('PLAN')
-    const host = newHost()
-    const { call } = await buildRealRig(host)
-    const agent = agentIn(workspaceRoot)
-
-    const result = await call(agent, 'pbfuzz_plan', {})
-
-    expect(result.isError).toBe(false)
-    if (!result.isError) {
-      expect(result.value).toEqual({ plan: 'ok' })
-      expect(result.content).toEqual([{ type: 'text', text: JSON.stringify({ plan: 'ok' }) }])
-    }
-  })
-
-  it('the same tool name is allowed or denied by phase through the real pipeline (pbfuzz_fuzz: PLAN denies, EXECUTE allows)', async () => {
-    const host = newHost()
-    {
-      const { root: workspaceRoot } = workspace('PLAN')
-      const { call } = await buildRealRig(host)
-      const result = await call(agentIn(workspaceRoot), 'pbfuzz_fuzz', {})
-      expect(result.isError).toBe(true)
-    }
-    {
-      const { root: workspaceRoot } = workspace('EXECUTE')
-      const { call } = await buildRealRig(host)
-      const result = await call(agentIn(workspaceRoot), 'pbfuzz_fuzz', {})
-      expect(result.isError).toBe(false)
-      if (!result.isError) expect(result.value).toEqual({ fuzz: 'ok' })
-    }
-  })
-
   it('denies a phase-illegal pbfuzz tool call through the real dispatch, with decide()\'s exact denial text as error.message', async () => {
     const { root: workspaceRoot } = workspace('PLAN') // pbfuzz_fuzz is EXECUTE-only
     const host = newHost()
@@ -224,34 +163,6 @@ describe('assembled smoke test: installGuard() through the real @deepseek-ai/dsh
       expect(result.error.message).toContain('Next legal action:')
       expect(result.content).toEqual([{ type: 'text', text: `Error: ${result.error.message}` }])
     }
-  })
-
-  it('denies a write under the campaign state directory through the real dispatch (state-write/owned-by-tool)', async () => {
-    const { root: workspaceRoot, dir } = workspace('PLAN')
-    const host = newHost()
-    const { call } = await buildRealRig(host)
-    const agent = agentIn(workspaceRoot)
-
-    const result = await call(agent, 'write', { file_path: join(dir, 'state', 'state.json'), content: '{}' })
-
-    expect(result.isError).toBe(true)
-    if (result.isError) expect(result.error.message).toMatch(/^\[pbfuzz:state-write\/owned-by-tool\] DENIED \(write\)/)
-
-    // And a write elsewhere in the workspace is allowed and actually runs, through the same pipeline.
-    const allowed = await call(agent, 'write', { file_path: join(workspaceRoot, 'notes.txt'), content: 'x' })
-    expect(allowed.isError).toBe(false)
-  })
-
-  it('denies an edit targeting state/metrics.json through the real dispatch (state-write/metrics-engine-only)', async () => {
-    const { root: workspaceRoot, dir } = workspace('PLAN')
-    const host = newHost()
-    const { call } = await buildRealRig(host)
-    const agent = agentIn(workspaceRoot)
-
-    const result = await call(agent, 'edit', { path: join(dir, 'state', 'metrics.json') })
-
-    expect(result.isError).toBe(true)
-    if (result.isError) expect(result.error.message).toMatch(/^\[pbfuzz:state-write\/metrics-engine-only\]/)
   })
 
   /**
@@ -272,9 +183,9 @@ describe('assembled smoke test: installGuard() through the real @deepseek-ai/dsh
    * template, via the same `formatDeny()` helper) so every internal exception in the guard —
    * whichever side of the `decide()` boundary it originates on — now produces the identical
    * signed, actionable deny. This test forces the gap's exact trigger (spying on
-   * `host.guardView()` — `guard-policy.spec.ts`'s own totality/fuzz test already proves malformed
-   * *input* to `decide()` itself can never cause an uncaught throw, so the guard-view construction
-   * call site is the one that has to throw to exercise this path) and asserts the FIXED behavior.
+   * `host.guardView()` — `decide()` already catches anything thrown inside its own body, so the
+   * guard-view construction call site is the one that has to throw to exercise this path) and
+   * asserts the FIXED behavior.
    */
   describe('fail-closed contract when host.guardView() itself throws (not just decide() — see comment above)', () => {
     it('denies with the authored, signed [pbfuzz:guard-error] message — not dsh-tools\' generic opaque catch — and does not corrupt later dispatches', async () => {

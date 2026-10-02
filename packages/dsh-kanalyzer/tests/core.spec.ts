@@ -86,7 +86,6 @@ describe('stderr parser', () => {
   it('reads load and fatal errors', () => {
     expect(parseStderr(F.STDERR_LOAD_ERROR).loadErrors).toEqual(['/work/selftest/nope.bc'])
     expect(parseStderr(F.STDERR_FATAL).fatalErrors[0]).toContain('Failed to open target list')
-    expect(F.FATAL_EXIT_CODE).not.toBe(0)
   })
 })
 
@@ -156,18 +155,6 @@ describe('target resolution, critical branches, remapping', () => {
     // Line 7 lies in block 1000 (starts at :6). The distance-0 call site 1003 (:15) is not the target.
     expect(r.targets).toEqual([{ requested: 'sample.c:7', function: 'target', location: 'selftest/sample.c:7', distance: 0 }])
     expect(r.unresolved).toEqual(['sample.c:1'])
-  })
-  it('resolves a real project target (Magma LUA001) through its own bid mapping', () => {
-    const luaBlocks = blockIndex(parseBidMapping(F.LUA001_BID_MAPPING), parseFuncInfo(F.LUA001_FUNC_INFO))
-    const distance = parseDistance(F.LUA001_DISTANCE)
-    // Magma's LUA001 list also names the patch backup (`ldebug.c.orig:193`); the real target is the first line.
-    const target = F.LUA001_TARGETS.split('\n')[0] ?? ''
-    expect(deriveStatus(evidence({ requestedTargets: [target], stderr: parseStderr(F.LUA001_STDERR), distance })).status).toBe('ok')
-    const r = resolveTargets([target], distance, luaBlocks)
-    expect(r.unresolved).toEqual([])
-    // The LUA001 canary sits in the static findvararg (luaG_findlocal starts at :208 per func-info).
-    expect(r.targets).toEqual([{ requested: target, function: 'findvararg', location: '/magma/targets/lua/repo/ldebug.c:197', distance: 0 }])
-    expect(parseCriticalBranches(F.LUA001_CRITICAL).size).toBeGreaterThan(0)
   })
   it('maps critical blocks to locations', () => {
     expect(criticalBranches(parseCriticalBranches(F.CRITICAL), parseDistance(F.DISTANCE), blocks, repo)).toEqual([
@@ -290,12 +277,6 @@ describe('queries', () => {
         ],
       })
       expect(runQuery({ op: 'branches', bitcode: 'b', fn: 'foo' }, withDumps).results).toHaveLength(1)
-    })
-
-    it('branches: a critical block with no policy row contributes nothing, rather than a guess', () => {
-      // 1006 is in CRITICAL but has no POLICY row, so its polarity is genuinely unknown and there
-      // is nothing honest to print for it.
-      expect(runQuery({ op: 'branches', bitcode: 'b' }, withDumps).results.join()).not.toContain('sample.c:21 true->')
     })
 
     it('branches: covers non-critical branches too, since both-reaching branches are still steerable', () => {

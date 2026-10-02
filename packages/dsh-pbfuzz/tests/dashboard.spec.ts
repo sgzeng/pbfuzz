@@ -24,12 +24,6 @@ const metrics = {
   last_session: { iterations: 60, reached: 12, elapsed_sec: 4.5, stopped_by: 'completed', best_reaching_input: '/tc/best' },
   last_updated: '2026-09-13T00:00:00Z',
 }
-const selfcheck = {
-  campaign_id: 'c1',
-  checked_at: '2026-09-13T00:00:00Z',
-  overall: 'pass',
-  items: [{ name: 'engine', status: 'pass' }, { name: 'static_analysis', status: 'disabled', reason: 'off in settings' }],
-}
 
 function sources(over: Partial<DashboardSources> = {}): DashboardSources {
   return {
@@ -48,7 +42,6 @@ function sources(over: Partial<DashboardSources> = {}): DashboardSources {
       ],
     },
     metrics,
-    selfcheck,
     now: '2026-09-13T01:00:00.000Z',
     ...over,
   }
@@ -103,22 +96,14 @@ function ordinaryErrorEvent(callId: string, text: string, time = 1_790_000_000_0
   }
 }
 
-/** Definition shape the projection registers; captured through the real entry point. */
-interface RegisteredProjection {
-  stateVersion: number
-  init(): unknown
-  apply: unknown
-  wire: { view(state: unknown): unknown }
-}
-
 /**
- * The projection definition `registerProjection` registers, captured through the real entry point
+ * The wire `view` and `init` `registerProjection` registers, captured through the real entry point
  * so a test reads the fold exactly the way the browser's `wire.view` does.
  * @returns the captured definition.
  */
-function registeredProjection(): RegisteredProjection {
-  let def: RegisteredProjection | undefined
-  registerProjection({ register: (d) => { def = d as RegisteredProjection } })
+function registeredProjection(): { init(): unknown; wire: { view(state: unknown): unknown } } {
+  let def: { init(): unknown; wire: { view(state: unknown): unknown } } | undefined
+  registerProjection({ register: (d) => { def = d as typeof def } })
   if (def === undefined) throw new Error('registerProjection registered nothing')
   return def
 }
@@ -157,7 +142,7 @@ describe('dashboard view builder (host)', () => {
   })
 
   it('degrades missing or malformed parts to their empty form', () => {
-    const view = buildDashboardView(sources({ state: { phase: 'NOPE' }, blocks: {}, metrics: { junk: 1 }, selfcheck: 'x' }))
+    const view = buildDashboardView(sources({ state: { phase: 'NOPE' }, blocks: {}, metrics: { junk: 1 } }))
     expect(view.phase).toBe('')
     expect(view.hypothesis).toBeNull()
     expect(view.metrics).toBeNull()
@@ -187,6 +172,16 @@ describe('pbfuzz projection fold', () => {
     expect(foldDashboard(state, { type: 'tool/result', data: { turn: 1, step: 1 } })).toBe(state)
     // An ordinary (non-guard) tool error carries no `[pbfuzz:...]` header, so it is not a denial.
     expect(foldDashboard(state, ordinaryErrorEvent('c2', 'Error: ENOENT: no such file'))).toBe(state)
+    // A successful call (no isError at all).
+    expect(foldDashboard(state, {
+      type: 'tool/result',
+      data: { message: { content: [{ type: 'tool-result', toolCallId: 'x', content: [{ type: 'text', text: 'ok' }] }] } },
+    })).toBe(state)
+    // isError but no content at all.
+    expect(foldDashboard(state, {
+      type: 'tool/result',
+      data: { message: { content: [{ type: 'tool-result', toolCallId: 'x', isError: true, content: [] }] } },
+    })).toBe(state)
   })
 
   it('takes the latest snapshot from tool/result meta', () => {
@@ -211,22 +206,6 @@ describe('pbfuzz projection fold', () => {
     const bashDenial = formatDeny('bash-guard/state-tamper', 'bash', 'this shell command would modify pbfuzz state', 'read-only commands are fine')
     expect(foldDashboard(stateOf(view), denyResultEvent('call2', bashDenial, time))?.view.denials[0]).toMatchObject({ hook: 'bash-guard/state-tamper', tool: 'bash' })
     expect(denialFromToolResult(denyResultEvent('call3', 'not a pbfuzz denial at all'))).toBeUndefined()
-  })
-
-  it('ignores tool/result events that are not pbfuzz guard denials', () => {
-    const state = stateOf(view)
-    // Successful call (no isError at all).
-    expect(foldDashboard(state, {
-      type: 'tool/result',
-      data: { message: { content: [{ type: 'tool-result', toolCallId: 'x', content: [{ type: 'text', text: 'ok' }] }] } },
-    })).toBe(state)
-    // Failed call whose text carries no pbfuzz header.
-    expect(foldDashboard(state, ordinaryErrorEvent('x', 'Error: permission denied'))).toBe(state)
-    // isError but no content at all.
-    expect(foldDashboard(state, {
-      type: 'tool/result',
-      data: { message: { content: [{ type: 'tool-result', toolCallId: 'x', isError: true, content: [] }] } },
-    })).toBe(state)
   })
 
   it('keeps denials across snapshots of the same campaign, newest first, capped', () => {
@@ -266,12 +245,9 @@ describe('pbfuzz projection fold', () => {
     expect(JSON.parse(JSON.stringify(a.at(-1)))).toEqual(a.at(-1)) // plain JSON: persistable
   })
 
-  it('registers a v4 projection whose view is the state\'s view', () => {
+  it('serves the state\'s view on the wire, and null before any state', () => {
     const def = registeredProjection()
-    expect(def.key).toBe('pbfuzz')
-    expect(def.stateVersion).toBe(4)
     expect(def.init()).toBeNull()
-    expect(def.apply).toBe(foldDashboard)
     expect(def.wire.view(stateOf(view))).toBe(view)
     expect(def.wire.view(null)).toBeNull()
   })

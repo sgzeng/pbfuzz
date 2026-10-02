@@ -33,20 +33,20 @@ LUA001_BBTARGETS = "ldebug.c:197\nldebug.c.orig:193\n"
 LUA001_SOURCE_LINE = '      MAGMA_LOG("%MAGMA_BUG%", INT_MAX - nextra <= (n - 1));'
 
 
-def test_parse_bbtargets_reads_one_location_per_line():
-    assert parse_bbtargets(LUA001_BBTARGETS) == ("ldebug.c:197", "ldebug.c.orig:193")
+@pytest.mark.parametrize("text, expected", [
+    (LUA001_BBTARGETS, ("ldebug.c:197", "ldebug.c.orig:193")),
+    ("a.c:1\n\n  \nb.c:2\n", ("a.c:1", "b.c:2")),  # blank lines are skipped
+])
+def test_parse_bbtargets(text, expected):
+    assert parse_bbtargets(text) == expected
 
 
-def test_parse_bbtargets_skips_blank_lines():
-    assert parse_bbtargets("a.c:1\n\n  \nb.c:2\n") == ("a.c:1", "b.c:2")
-
-
-def test_parse_magma_log_condition_extracts_the_predicate():
-    assert parse_magma_log_condition(LUA001_SOURCE_LINE) == "INT_MAX - nextra <= (n - 1)"
-
-
-def test_parse_magma_log_condition_none_when_absent():
-    assert parse_magma_log_condition("    *pos = ci->func - nextra + (n - 1);") is None
+@pytest.mark.parametrize("source_line, expected", [
+    (LUA001_SOURCE_LINE, "INT_MAX - nextra <= (n - 1)"),
+    ("    *pos = ci->func - nextra + (n - 1);", None),  # no MAGMA_LOG call on the line
+])
+def test_parse_magma_log_condition(source_line, expected):
+    assert parse_magma_log_condition(source_line) == expected
 
 
 def _lua001_input(**overrides) -> MagmaAdapterInput:
@@ -94,14 +94,15 @@ def test_build_campaign_prebuilt_mode_is_the_magma_skip_static_analysis_path():
     assert "bitcode" not in static and "entries" not in static
 
 
-def test_build_campaign_with_no_seeds_turns_corpus_off_with_a_reason():
-    c = build_campaign(_lua001_input())
-    assert c["analysis"]["corpus"] == {"enabled": False, "disabled_reason": "no seeds supplied"}
-
-
-def test_build_campaign_with_seeds_enables_corpus():
-    c = build_campaign(_lua001_input(seeds_dir="/work/magma/targets/lua/corpus/lua"))
-    assert c["analysis"]["corpus"] == {"enabled": True, "seeds_dir": "/work/magma/targets/lua/corpus/lua"}
+@pytest.mark.parametrize("overrides, expected", [
+    ({}, {"enabled": False, "disabled_reason": "no seeds supplied"}),
+    (
+        {"seeds_dir": "/work/magma/targets/lua/corpus/lua"},
+        {"enabled": True, "seeds_dir": "/work/magma/targets/lua/corpus/lua"},
+    ),
+])
+def test_build_campaign_corpus_follows_seeds_dir(overrides, expected):
+    assert build_campaign(_lua001_input(**overrides))["analysis"]["corpus"] == expected
 
 
 def test_adapter_has_no_field_to_carry_a_bug_patch_path():

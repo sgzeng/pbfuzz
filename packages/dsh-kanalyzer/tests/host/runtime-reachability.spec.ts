@@ -35,7 +35,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DUMP_FILES } from '../../src/core/options.ts'
 import type { RunResult } from '../../src/host/exec.ts'
 import { KanalyzerRuntime } from '../../src/host/runtime.ts'
-import type { Config } from '../../src/host/settings.ts'
+import { config, okResult } from './prepare-harness.ts'
 
 const { runMock, analyzeFromDumpsMock, runQueryMock } = vi.hoisted(
   () => ({ runMock: vi.fn(), analyzeFromDumpsMock: vi.fn(), runQueryMock: vi.fn() }),
@@ -64,22 +64,6 @@ vi.mock('../../src/core/query.ts', async (importOriginal) => {
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURES = join(HERE, '..', 'fixtures', 'unreachable-toy')
-
-function okResult(over: Partial<RunResult> = {}): RunResult {
-  return { exitCode: 0, signal: null, timedOut: false, stdout: '', stderr: '', elapsedMs: 1, ...over }
-}
-
-function config(installDir: string, llvmPrefix: string): Config {
-  return {
-    install: { installDir, repoUrl: '', branch: 'mzt', llvmPrefix, buildType: 'Release', jobs: 0, wllvmBinDir: '' },
-    defaults: {
-      verbose: 1, callStackLen: 20, useTypeBasedCallGraph: true, timeoutSec: 1800, memLimitMB: 16384, cacheEnabled: false, prepareMode: 'wllvm',
-      dumps: { policy: true, distance: true, criticalBranch: true, bidMappingAndFuncInfo: true, callerCalleeBothWays: true, annotatedIr: false },
-    },
-    standalone: { inputFilenames: [], targetList: [], entryList: [] },
-    status: { installed: false, binaryPath: '', commit: '', llvmVersion: '', lastDoctor: '', lastDoctorAt: '', lastDoctorMessage: '', lastWllvm: '', lastWllvmAt: '', lastWllvmMessage: '', wllvmBinDir: '' },
-  }
-}
 
 /** Canonical dump file names a full-selection run writes — what `interpret()` reads back. */
 const DUMP_NAMES = [
@@ -150,15 +134,6 @@ describe('interpret(): live analyze() wires the caller-callee dump into the reac
     })
     expect(result.status).toBe('unreachable')
     expect(result.reason).toMatch(/call-graph|BFS|reachability/i)
-  })
-
-  it('keeps a live analyze() "ok" for the real reachable-toy fixture (no regression)', async () => {
-    mockKamainRun('reachable')
-    const result = await service().analyze({
-      bitcode, targets: ['helper.c:6'], entries: ['main'], force: true,
-    })
-    expect(result.status).toBe('ok')
-    expect(result.targets.some(t => t.function === 'helper_other')).toBe(true)
   })
 })
 

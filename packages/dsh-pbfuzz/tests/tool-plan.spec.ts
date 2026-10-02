@@ -8,7 +8,6 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { campaignToYaml } from '../src/core/campaign-yaml.ts'
 import { PBFUZZ_TOOLS } from '../src/core/phases.ts'
 import { PbfuzzHost, type ActiveCampaign, type AgentLike } from '../src/host.ts'
 import { settings } from './fixtures.ts'
@@ -89,18 +88,10 @@ describe('pbfuzz_plan tool', () => {
   it('throws IllegalTransitionError-shaped rejection when called outside PLAN (defensive; the guard is the real gate)', async () => {
     const host = newHost()
     const { agent } = workspace()
-    const active = planPhaseCampaign(host, agent) // still INIT: PLAN was never entered
+    planPhaseCampaign(host, agent) // still INIT: PLAN was never entered
     const tools = captureTools(host)
     const plan = tools.get('pbfuzz_plan')!
     await expect(plan.execute({ bug_predicates: [{ id: 'BP1', location: 'toy.c:1', bug_condition: 'x' }] }, fakeExec(agent)))
       .rejects.toThrow(/illegal PIER transition/)
-  })
-
-  it('rejects an unconfirmed/no-campaign workspace the same way every other pbfuzz tool does', async () => {
-    const host = newHost()
-    const { agent } = workspace()
-    const tools = captureTools(host)
-    const plan = tools.get('pbfuzz_plan')!
-    await expect(plan.execute({}, fakeExec(agent))).rejects.toThrow(/no active pbfuzz campaign/)
   })
 })

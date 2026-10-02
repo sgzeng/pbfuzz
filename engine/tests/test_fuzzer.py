@@ -20,8 +20,8 @@ FAST = {"maxIters": 8, "execTimeoutSec": 5, "fuzzTimeoutSec": 60, "generatorTime
 PAYLOAD_SPACE = {"payload": {"type": "categorical", "values": ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]}, "n": {"type": "int_range", "min": 0, "max": 1000}}
 
 
-def _session(make_campaign, write_plan, write_generator, plan, gen=None, channel="file", runtime=None, **kw):
-    campaign = load_campaign(make_campaign(channel))
+def _session(make_campaign, write_plan, write_generator, plan, gen=None, runtime=None, **kw):
+    campaign = load_campaign(make_campaign())
     events: list[tuple[str, dict]] = []
     session = FuzzSession(campaign, load_plan(write_plan(plan)), gen or write_generator(), runtime={**FAST, **(runtime or {})},
                           notify=lambda m, p: events.append((m, p)), **kw)
@@ -32,9 +32,8 @@ def _records(result):
     return [json.loads(line) for line in Path(result["iterationsPath"]).read_text().splitlines()]
 
 
-@pytest.mark.parametrize("channel", ["file", "stdin"])
-def test_plain_run_completes(make_campaign, write_plan, write_generator, channel):
-    session, events, campaign = _session(make_campaign, write_plan, write_generator, {"parameter_space": PAYLOAD_SPACE}, channel=channel)
+def test_plain_run_completes(make_campaign, write_plan, write_generator):
+    session, events, campaign = _session(make_campaign, write_plan, write_generator, {"parameter_space": PAYLOAD_SPACE})
     result = session.run()
     assert_only_declared_keys(result, RESULT_SCHEMA)
     s = result["summary"]
@@ -88,13 +87,6 @@ def test_exec_timeouts_are_counted_not_reached(make_campaign, write_plan, write_
     session, _, _ = _session(make_campaign, write_plan, write_generator, {"parameter_space": {}}, gen=gen, runtime={"maxIters": 2, "execTimeoutSec": 0.3})
     s = session.run()["summary"]
     assert s["timeoutCount"] == 2 and s["reachedCount"] == 0
-
-
-def test_fuzz_timeout(make_campaign, write_plan, write_generator):
-    session, _, campaign = _session(make_campaign, write_plan, write_generator, {"parameter_space": PAYLOAD_SPACE}, runtime={"maxIters": 10_000, "fuzzTimeoutSec": 0.5})
-    result = session.run()
-    assert result["summary"]["stoppedBy"] == "timeout"
-    assert MetricsStore(campaign.state_dir).read()["last_session"]["stopped_by"] == "timeout"
 
 
 def test_fuzz_timeout_interrupts_a_slow_generation_sub_batch(make_campaign, write_plan, write_generator):

@@ -33,6 +33,7 @@ def test_corpus_and_deviation_config(make_campaign, tmp_path):
     ("file", {"entry": {"input_channel": "socket"}}, "input_channel"),
     ("file", {"oracle": {"reached_pattern": "("}}, "not a valid regular expression"),
     ("file", {"oracle": {"mode": "magic"}}, "oracle.mode"),
+    ("file", {"oracle": None}, "is required"),
     ("file", {"version": 2}, "version"),
     ("file", {"id": "Bad ID"}, "identifier"),
     ("file", {"bug": {"kind": "cve", "targets": []}}, "non-empty"),

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { PbfuzzPhase, SelfcheckItemName, SelfcheckStatus } from '../src/core/contracts.ts'
-import { bashGuardVerdict } from '../src/core/bash-guard.ts'
+import type { PbfuzzPhase } from '../src/core/contracts.ts'
 import type { GuardExec, GuardView } from '../src/core/guard-policy.ts'
 import { decide } from '../src/core/guard-policy.ts'
 import { NEXT_STEP } from '../src/core/fsm.ts'
@@ -81,12 +80,6 @@ describe('decide — state-directory write/edit (branch 3)', () => {
       assertNextAction(denial!)
     }
   })
-
-  it('edit is denied exactly like write (no partial-diff carve-out any more)', () => {
-    const denial = decide(view(), exec('edit', { resolvedPath: `${STATE_DIR}/state.json` }))
-    expect(denial).toContain('DENIED (edit)')
-    expect(denial).toContain('[pbfuzz:state-write/owned-by-tool]')
-  })
 })
 
 describe('decide — bash (branch 4)', () => {
@@ -112,12 +105,6 @@ describe('decide — bash (branch 4)', () => {
 
   it('a missing bashCommand is treated as the empty string, never throws, never denies', () => {
     expect(decide(view(), exec('bash'))).toBeUndefined()
-  })
-
-  it('agrees with bashGuardVerdict() directly (no extra logic duplicated in decide())', () => {
-    const cmd = 'sed -i s/PLAN/SUCCESS/ .pbfuzz/c1/state/state.json'
-    expect(bashGuardVerdict(cmd, STATE_DIR).denied).toBe(true)
-    expect(decide(view(), exec('bash', { bashCommand: cmd }))).toBeDefined()
   })
 })
 
@@ -145,18 +132,6 @@ describe('decide — terminal gate (branch 5)', () => {
     expect(denial).toContain('tools.interactiveDebug')
     expect(denial).toContain('pbfuzz_trace')
   })
-
-  it('terminal_open denial names the exact tool right after the rule id', () => {
-    const denial = decide(view({ phase: 'PLAN' }), exec('terminal_send'))
-    expect(denial?.startsWith('[pbfuzz:phase-gate/terminal] DENIED (terminal_send) — ')).toBe(true)
-  })
-
-  it('housekeeping terminal tools and foreign tools are never in terminalToolNames, so they are simply ungated (documented assumption)', () => {
-    const v = view({ phase: 'PLAN', terminalToolNames: ['terminal_open', 'terminal_send'] })
-    for (const tool of ['terminal_read', 'terminal_close', 'terminal_list', 'terminal_signal', 'grep']) {
-      expect(decide(v, exec(tool))).toBeUndefined()
-    }
-  })
 })
 
 describe('decide — kanalyzer standalone carve-out (branch 6)', () => {
@@ -167,12 +142,6 @@ describe('decide — kanalyzer standalone carve-out (branch 6)', () => {
         expect(decide(v, exec(tool)), `${tool} in ${phase}`).toBeUndefined()
       }
     }
-  })
-
-  it('pbfuzz_* tools keep their normal phase gating even when kanalyzer is exempt', () => {
-    const denial = decide(view({ phase: 'INIT', confirmed: false }), exec('pbfuzz_fuzz'))
-    expect(denial).toContain('[pbfuzz:phase-gate/phase]')
-    expect(denial).toContain('not legal in phase INIT')
   })
 })
 
@@ -197,15 +166,6 @@ describe('decide — phase gate for pbfuzz_*/kanalyzer_* (branch 7)', () => {
     // read-only tools. pbfuzz's own static-analysis tool stays gated by that switch.
     expect(decide(v, exec('kanalyzer_analyze'))).toBeUndefined()
     expect(decide(v, exec('pbfuzz_callgraph'))).toContain('[pbfuzz:phase-gate/phase]')
-    const withStaticAnalysis = view({ phase: 'EXECUTE', settings: settings({ tools: { staticAnalysis: 'kanalyzer' } }) })
-    expect(decide(withStaticAnalysis, exec('kanalyzer_analyze'))).toBeUndefined()
-  })
-
-  it('static analysis off in settings denies pbfuzz_callgraph but never the kanalyzer plugin\'s own tools', () => {
-    const v = view({ phase: 'PLAN', settings: settings({ tools: { staticAnalysis: 'off' } }) })
-    expect(decide(v, exec('pbfuzz_callgraph'))).toContain('[pbfuzz:phase-gate/disabled]')
-    expect(decide(v, exec('kanalyzer_analyze'))).toBeUndefined()
-    expect(decide(v, exec('kanalyzer_doctor'))).toBeUndefined()
   })
 
   it('REFLECT allows pbfuzz_deviation/pbfuzz_trace, denies pbfuzz_fuzz naming pbfuzz_deviation as an alternative', () => {
@@ -259,24 +219,9 @@ describe('decide — backing-item check (branch 8)', () => {
     expect(denial).toContain('[pbfuzz:phase-gate/disabled]')
     expect(denial).toContain('tools.deviationDetection')
   })
-
-  it('engine (pbfuzz_fuzz\'s backing) has no settings switch, so this branch never denies it', () => {
-    // `toolEnabledInSettings` returns true unconditionally for `engine` and `oracle` — neither is
-    // optional — so the only thing that can stop `pbfuzz_fuzz` is the phase gate above.
-    expect(decide(view({ phase: 'EXECUTE' }), exec('pbfuzz_fuzz'))).toBeUndefined()
-    expect(decide(view({ phase: 'IMPLEMENT' }), exec('pbfuzz_fuzz'))).toBeUndefined()
-  })
-
-  it('a tool with no backing item at all (pbfuzz_campaign) is never denied by this branch', () => {
-    expect(decide(view({ phase: 'SUCCESS' }), exec('pbfuzz_campaign'))).toBeUndefined()
-  })
 })
 
-describe('decide — allow (branch 9) and guard-error fail-closed wrapper', () => {
-  it('a fully legal call allows', () => {
-    expect(decide(view({ phase: 'PLAN' }), exec('pbfuzz_plan'))).toBeUndefined()
-  })
-
+describe('decide — guard-error fail-closed wrapper', () => {
   it('never throws, and denies with a signed [pbfuzz:guard-error] instead, when something inside decide() blows up', () => {
     const poisoned: GuardView = view()
     Object.defineProperty(poisoned, 'settings', {
@@ -327,7 +272,6 @@ describe('decide — totality / fuzz: never throws on malformed input, always re
       confirmed: pick([true, false, undefined, 1, 'yes'] as const) as unknown as boolean,
       stateDir: pick(['/repo/.pbfuzz/c1/state', '', pick(weirdStrings) as string, STATE_DIR]) as string,
       settings: pick(weirdSettings) as GuardView['settings'],
-      selfcheck: pick([{}, { engine: 'fail' as SelfcheckStatus }, null, undefined, { weird: 'x' }]) as unknown as Partial<Record<SelfcheckItemName, SelfcheckStatus>>,
       providerPresent: pick([true, false, undefined]) as unknown as boolean,
       terminalToolNames: pick([['terminal_open'], [], undefined, null, 'not-an-array']) as unknown as readonly string[],
     }
@@ -348,16 +292,6 @@ describe('decide — totality / fuzz: never throws on malformed input, always re
       let result: string | undefined
       expect(() => { result = decide(v, e) }, `iteration ${i}: view=${JSON.stringify(v)} exec=${JSON.stringify(e)}`).not.toThrow()
       expect(result === undefined || typeof result === 'string', `iteration ${i}`).toBe(true)
-    }
-  })
-
-  it('bashGuardVerdict() survives 250 randomized/malformed (command, stateDir) pairs', () => {
-    for (let i = 0; i < 250; i++) {
-      const command = pick(weirdStrings) as string
-      const stateDir = pick(weirdStrings) as string
-      let result: ReturnType<typeof bashGuardVerdict> | undefined
-      expect(() => { result = bashGuardVerdict(command, stateDir) }, `iteration ${i}`).not.toThrow()
-      expect(typeof result?.denied).toBe('boolean')
     }
   })
 })

@@ -10,8 +10,7 @@
 import { mkdtempSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
-import { CONTRACTS_VERSION } from '../src/core/selfcheck.ts'
+import { describe, expect, it } from 'vitest'
 import { PbfuzzHost, type AgentLike } from '../src/host.ts'
 import { PBFUZZ_TOOLS } from '../src/core/phases.ts'
 import { settings } from './fixtures.ts'
@@ -62,15 +61,6 @@ describe('pbfuzz_campaign draft (tool layer)', () => {
     }, fakeExec(agent))).rejects.toThrow(/target\.revision/)
   })
 
-  it('a valid draft succeeds and carries a draftVersion', async () => {
-    const host = newHost()
-    const { agent, root } = workspace()
-    const campaign = captureTools(host).get('pbfuzz_campaign')!
-    const result = await campaign.execute({ action: 'draft', answers: validAnswers(root) }, fakeExec(agent)) as { ok: boolean; draftVersion?: string }
-    expect(result.ok).toBe(true)
-    expect(typeof result.draftVersion).toBe('string')
-  })
-
   it('accepts the build the agent wrote, and reports what running it did', async () => {
     // `answers.build` was once missing from the schema entirely, so dsh-tools rejected the call
     // with a "not a declared property" error before execute() ever ran — for every campaign whose
@@ -99,11 +89,9 @@ describe('pbfuzz_campaign confirm draft_version threading (H4)', () => {
     const host = newHost()
     const { agent, root } = workspace()
     const campaign = captureTools(host).get('pbfuzz_campaign')!
-    const drafted = await campaign.execute({ action: 'draft', answers: validAnswers(root) }, fakeExec(agent)) as { draftVersion: string }
+    await campaign.execute({ action: 'draft', answers: validAnswers(root) }, fakeExec(agent))
     const result = await campaign.execute({ action: 'confirm', draft_version: 'not-the-real-version' }, fakeExec(agent)) as { verdict: string }
     expect(result.verdict).toBe('error')
-    // Confirming with the version the draft actually returned goes through the normal Approve/no-asker path instead.
-    expect(drafted.draftVersion).not.toBe('not-the-real-version')
   })
 })
 

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import assert_error_shape, assert_only_declared_keys, contract_def
+from conftest import assert_error_shape, assert_only_declared_keys
 
 from pbfuzz_engine import tracing
 from pbfuzz_engine.errors import NOT_IMPLEMENTED, TRACER_FAILED, EngineError
@@ -114,15 +114,14 @@ def test_client_notification_is_ignored_and_blank_lines_skipped(sidecar):
     assert len(sidecar.lines) == 1
 
 
-def test_missing_params_is_invalid_params(sidecar):
-    resp = sidecar.call(2, "campaign.load", {})
-    assert resp["error"]["code"] == -32602
-    _check_response(resp)
-
-
-def test_campaign_load_error(sidecar, tmp_path):
-    resp = sidecar.call(3, "campaign.load", {"campaignPath": str(tmp_path / "none.yaml")})
-    assert resp["error"]["code"] == -32001
+@pytest.mark.parametrize("method, params, code", [
+    ("campaign.load", {}, -32602),
+    ("campaign.load", {"campaignPath": "/nonexistent/none.yaml"}, -32001),
+    ("fuzz.run", {"campaignPath": "a", "planPath": "b", "generatorPath": "c", "bogus": 1}, -32602),
+])
+def test_handler_errors_use_the_contract_codes(sidecar, method, params, code):
+    resp = sidecar.call(2, method, params)
+    assert resp["error"]["code"] == code
     _check_response(resp)
 
 
@@ -160,11 +159,6 @@ def test_fuzz_run_mid_run_error_diagnosis_reaches_rpc_summary(sidecar, make_camp
     assert result["summary"]["stoppedBy"] == "error" and result["summary"]["errorCount"] == 1
     assert "boom" in result["summary"]["errorMessage"]
     assert result["summary"]["errorDiagnosis"]
-
-
-def test_fuzz_run_rejects_unknown_params(sidecar):
-    resp = sidecar.call(11, "fuzz.run", {"campaignPath": "a", "planPath": "b", "generatorPath": "c", "bogus": 1})
-    assert resp["error"]["code"] == -32602
 
 
 def test_fuzz_run_accepts_contract_debugger_paths(sidecar, make_campaign, write_plan, write_generator):

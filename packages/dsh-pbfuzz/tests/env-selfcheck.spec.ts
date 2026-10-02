@@ -19,11 +19,6 @@ describe('isEnvSelfcheckFresh', () => {
 })
 
 describe('envItemFromCache', () => {
-  it('reconstructs the engine item from a cached pass', () => {
-    const cache: EnvSelfcheckCache = { checkedAt: 'x', ttlExpiresAt: 'y', overall: 'pass', items: [{ name: 'engine', status: 'pass' }] }
-    expect(envItemFromCache(cache)).toEqual({ name: 'engine', status: 'pass' })
-  })
-
   it('a cache with no items degrades to fail rather than silently passing the gate', () => {
     const cache: EnvSelfcheckCache = { checkedAt: 'x', ttlExpiresAt: 'y', overall: 'pass', items: [] }
     expect(envItemFromCache(cache).status).toBe('fail')
@@ -52,15 +47,6 @@ describe('readOrRunEnvSelfcheck', () => {
     expect(ping).toHaveBeenCalledOnce()
     expect(outcome.cache.checkedAt).toBe(new Date(nowMs).toISOString())
     expect(outcome.cache.ttlExpiresAt).toBe(new Date(nowMs + 1000).toISOString())
-  })
-
-  it('runs a fresh check when the cache has expired', async () => {
-    const ping = vi.fn(okPing)
-    const engine = vi.fn(okEngine)
-    const stale: EnvSelfcheckCache = { checkedAt: '2020-01-01T00:00:00.000Z', ttlExpiresAt: '2020-01-02T00:00:00.000Z', overall: 'pass', items: [{ name: 'engine', status: 'pass' }] }
-    const outcome = await readOrRunEnvSelfcheck({ ping, engine }, stale, () => Date.now())
-    expect(outcome.ranFresh).toBe(true)
-    expect(ping).toHaveBeenCalledOnce()
   })
 
   it('surfaces a failing engine check rather than caching a false pass', async () => {

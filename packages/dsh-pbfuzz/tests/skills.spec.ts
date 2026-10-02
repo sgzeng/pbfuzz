@@ -9,15 +9,13 @@ describe('parseSkill: whenToUse / invocation frontmatter', () => {
     expect(parseSkill('---\nname: x\ndescription: y\n---\nbody', 'p')).toEqual({ name: 'x', description: 'y', content: 'body', path: 'p' })
   })
 
-  it('parses whenToUse (camelCase, the real filesystem provider\'s own spelling)', () => {
-    const skill = parseSkill('---\nname: x\ndescription: y\nwhenToUse: use this when Z\n---\nbody', 'p')
+  it.each([
+    ['whenToUse', 'camelCase, the real filesystem provider\'s own spelling'],
+    ['when-to-use', 'the hyphenated spelling'],
+  ])('parses %s (%s)', (key) => {
+    const skill = parseSkill(`---\nname: x\ndescription: y\n${key}: use this when Z\n---\nbody`, 'p')
     expect(skill?.whenToUse).toBe('use this when Z')
     expect(skill?.invocation).toBeUndefined()
-  })
-
-  it('also accepts the hyphenated when-to-use spelling', () => {
-    const skill = parseSkill('---\nname: x\ndescription: y\nwhen-to-use: use this when Z\n---\nbody', 'p')
-    expect(skill?.whenToUse).toBe('use this when Z')
   })
 
   it('resolves disable-model-invocation / user-invocable into a full policy', () => {

@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DUMP_FILES } from '../../src/core/options.ts'
 import type { RunResult } from '../../src/host/exec.ts'
 import { KanalyzerRuntime } from '../../src/host/runtime.ts'
-import type { Config } from '../../src/host/settings.ts'
+import { config, okResult } from './prepare-harness.ts'
 
 const { runMock } = vi.hoisted(() => ({ runMock: vi.fn() }))
 
@@ -32,22 +32,6 @@ vi.mock('../../src/host/exec.ts', async (importOriginal) => {
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURES = join(HERE, '..', 'fixtures', 'unreachable-toy', 'reachable')
-
-function okResult(over: Partial<RunResult> = {}): RunResult {
-  return { exitCode: 0, signal: null, timedOut: false, stdout: '', stderr: '', elapsedMs: 1, ...over }
-}
-
-function config(installDir: string, llvmPrefix: string): Config {
-  return {
-    install: { installDir, repoUrl: '', branch: 'mzt', llvmPrefix, buildType: 'Release', jobs: 0, wllvmBinDir: '' },
-    defaults: {
-      verbose: 1, callStackLen: 20, useTypeBasedCallGraph: true, timeoutSec: 1800, memLimitMB: 16384, cacheEnabled: true, prepareMode: 'wllvm',
-      dumps: { policy: true, distance: true, criticalBranch: true, bidMappingAndFuncInfo: true, callerCalleeBothWays: true, annotatedIr: false },
-    },
-    standalone: { inputFilenames: [], targetList: [], entryList: [] },
-    status: { installed: false, binaryPath: '', commit: '', llvmVersion: '', lastDoctor: '', lastDoctorAt: '', lastDoctorMessage: '', lastWllvm: '', lastWllvmAt: '', lastWllvmMessage: '', wllvmBinDir: '' },
-  }
-}
 
 /** The dump files a default-selection run produces, in the plugin's canonical names. */
 const DUMP_NAMES = [
@@ -100,7 +84,7 @@ describe('analyze(): delivers the dump files to outputDir', () => {
 
   function service(): KanalyzerRuntime {
     return new KanalyzerRuntime(new Context(), {
-      config: () => config(installDir, llvmPrefix),
+      config: () => config(installDir, llvmPrefix, { cacheEnabled: true }),
       writeStatus: async () => {},
       packageRoot: tmp,
     })
@@ -155,10 +139,12 @@ describe('analyze(): delivers the dump files to outputDir', () => {
     expect(existsSync(join(deliverDir, DUMP_FILES.policy))).toBe(false)
   })
 
-  it('delivers nothing when the analysis fails before producing results', async () => {
+  it('rejects a malformed target before KAMain runs, delivering nothing', async () => {
     const deliverDir = join(tmp, 'workspace')
     const result = await service().analyze({ bitcode, targets: ['not-a-file:line'], entries: ['main'], outputDir: deliverDir })
     expect(result.status).toBe('error')
-    expect(existsSync(join(deliverDir, DUMP_FILES.distance))).toBe(false)
+    expect(result.reason).toMatch(/malformed target/)
+    expect(runMock.mock.calls.some(c => c[0] === kamainBinary)).toBe(false)
+    expect(existsSync(deliverDir)).toBe(false)
   })
 })

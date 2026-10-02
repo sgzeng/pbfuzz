@@ -1,10 +1,9 @@
 /**
- * Shared scaffolding for the `doPrepare()` specs (isolation, reuse, background).
- *
- * Only the subprocess boundary is faked, exactly as `prepare-failure.spec.ts` does it: `rsync`
- * really copies, the "build" really writes its link output, `extract-bc` really writes bitcode.
- * Everything else — path mapping, the shim install, the memo, the single-flight guard — is the
- * real code under test.
+ * Shared scaffolding for the host specs that drive `KanalyzerRuntime` with only the subprocess
+ * boundary faked (prepare isolation/reuse/background/failure, query memo, delivery, reachability):
+ * `rsync` really copies, the "build" really writes its link output, `extract-bc` really writes
+ * bitcode. Everything else — path mapping, the shim install, the memo, the single-flight guard —
+ * is the real code under test.
  *
  * @module @pbfuzz/dsh-kanalyzer/tests/host/prepare-harness
  */
@@ -42,14 +41,19 @@ export function config(installDir: string, llvmPrefix: string, over: Partial<Con
   }
 }
 
-/** A throwaway workspace: a checkout with one source file, and an LLVM prefix with a clang in it. */
-export function workspace(prefix = 'kanalyzer-prepare-'): { tmp: string; repo: string; llvmPrefix: string; installDir: string } {
+/**
+ * A throwaway workspace: a checkout with one source file, and an LLVM prefix with a clang in it.
+ * @param prefix - temp directory name prefix.
+ * @param llvmDir - the LLVM prefix's directory name; a name carrying no version (`llvm`) means no
+ *   versioned shim names (`clang-14`) are installed.
+ */
+export function workspace(prefix = 'kanalyzer-prepare-', llvmDir = 'llvm-14'): { tmp: string; repo: string; llvmPrefix: string; installDir: string } {
   const tmp = mkdtempSync(join(tmpdir(), prefix))
   const repo = join(tmp, 'proj')
   mkdirSync(join(repo, 'src'), { recursive: true })
   writeFileSync(join(repo, 'src', 'main.c'), 'int main(void) { return 0; }\n')
   writeFileSync(join(repo, 'build.sh'), '#!/bin/sh\nexit 0\n')
-  const llvmPrefix = join(tmp, 'llvm-14')
+  const llvmPrefix = join(tmp, llvmDir)
   mkdirSync(join(llvmPrefix, 'bin'), { recursive: true })
   writeFileSync(join(llvmPrefix, 'bin', 'clang'), '')
   return { tmp, repo, llvmPrefix, installDir: join(tmp, 'install') }

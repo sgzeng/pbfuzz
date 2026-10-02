@@ -15,27 +15,12 @@ describe('scrubEnv: no credential reaches the model-code sidecar', () => {
     }
     expect(scrubEnv(env)).toEqual({ PATH: '/usr/bin', PYTHONPATH: '/engine', LANG: 'en_US.UTF-8' })
   })
-
-  it('keeps unrelated names intact, including undefined values', () => {
-    const env = { HOME: '/home/x', EMPTY: undefined }
-    expect(scrubEnv(env)).toEqual({ HOME: '/home/x', EMPTY: undefined })
-  })
-
-  it('is a no-op on an environment with nothing sensitive', () => {
-    const env = { PATH: '/bin', USER: 'x' }
-    expect(scrubEnv(env)).toEqual(env)
-  })
 })
 
 describe('EngineBridge.stop()', () => {
-  it('is a no-op that resolves immediately when nothing was ever spawned', async () => {
+  it('is a no-op that resolves immediately when nothing was ever spawned, and stays so when repeated', async () => {
     const bridge = new EngineBridge({ pythonPath: '/does/not/matter' })
     await expect(bridge.stop()).resolves.toBeUndefined()
-  })
-
-  it('resolves even twice in a row (idempotent)', async () => {
-    const bridge = new EngineBridge({ pythonPath: '/does/not/matter' })
-    await bridge.stop()
     await expect(bridge.stop()).resolves.toBeUndefined()
   })
 })

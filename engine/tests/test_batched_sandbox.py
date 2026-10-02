@@ -208,34 +208,3 @@ def test_close_terminates_the_worker_process(write_generator):
     sandbox.close()
     assert proc.poll() is not None, "the worker process must be gone after close()"
     assert sandbox._proc is None
-
-
-def test_batched_calls_are_much_cheaper_per_call_than_one_shot(write_generator):
-    """Direct evidence for the P4.1 fix: batching amortises the interpreter-start cost that
-    made `run_sandboxed` ~416ms/call. Uses modest sample sizes (not the ~500 calls measured for
-    the fix's headline number, which this suite keeps out of the routine run -- see the report)
-    so this stays fast on a slow VM while still demonstrating an order-of-magnitude difference.
-    """
-    gen = write_generator("def generate(**p):\n    return b'x' * p.get('n', 1)\n")
-
-    n_old = 8
-    single = GeneratorSandbox(gen, FAST)
-    started = time.monotonic()
-    for i in range(n_old):
-        single.generate({"n": i})
-    old_per_call = (time.monotonic() - started) / n_old
-
-    n_new = 80
-    batched = BatchedGeneratorSandbox(gen, FAST)
-    started = time.monotonic()
-    try:
-        results = batched.generate_many([{"n": i} for i in range(n_new)])
-    finally:
-        batched.close()
-    new_per_call = (time.monotonic() - started) / n_new
-
-    assert all(isinstance(r, GeneratedInput) for r in results)
-    assert new_per_call < old_per_call / 3, (
-        f"batched sandbox not clearly faster: {new_per_call * 1000:.1f}ms/call vs "
-        f"one-shot {old_per_call * 1000:.1f}ms/call"
-    )

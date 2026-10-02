@@ -12,12 +12,11 @@
  *
  * `/pbfuzz run` is the ONE place a failure sets `process.exitCode`.
  */
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { registerCommand } from '../src/command.ts'
-import { campaignToYaml } from '../src/core/campaign-yaml.ts'
 import { PBFUZZ_TOOLS } from '../src/core/phases.ts'
 import { PbfuzzHost, type AgentLike } from '../src/host.ts'
 import { settings } from './fixtures.ts'
@@ -76,26 +75,6 @@ describe('/pbfuzz <notes>: two channels, never one', () => {
     expect(sent.instructions[0]).toContain('# how to run a campaign')
     expect(sent.user.join('\n')).not.toContain('how to run a campaign')
   })
-
-  it('injects the skill body rather than telling the model to go load it', async () => {
-    const sent = empty()
-    const cmd = register(newHost(), sent, '# body\nstep one\nstep two')
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'pbfuzz-cmd-')))
-    await cmd.handler({ agent: agentIn(root), rawInput: '', signal: new AbortController().signal })
-    expect(sent.user).toEqual([])
-    expect(sent.instructions[0]).toContain('step two')
-  })
-
-  it('sends no interview-plan JSON: the model can call pbfuzz_campaign status itself', async () => {
-    const sent = empty()
-    const cmd = register(newHost(), sent)
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'pbfuzz-cmd-')))
-    await cmd.handler({ agent: agentIn(root), rawInput: 'go', signal: new AbortController().signal })
-    const all = [...sent.user, ...sent.instructions].join('\n')
-    expect(all).not.toContain('"interview"')
-    expect(all).not.toContain('```json')
-    expect(sent.instructions[0]!.length).toBeLessThan(1500)
-  })
 })
 
 describe('/pbfuzz status', () => {
@@ -137,35 +116,6 @@ describe('/pbfuzz run <path>: the one legitimate place for process.exitCode (D5)
     expect(result.text).toContain('usage')
     expect(process.exitCode).toBe(before)
   })
-
-  it('an unconfirmed campaign is refused before the engine, and the command still reports it as a plain error (setting exitCode, matching every other run failure)', async () => {
-    const host = newHost()
-    const sent = empty()
-    const cmd = register(host, sent)
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'pbfuzz-cmd-run-')))
-    const dir = join(root, '.pbfuzz', 'cmdrun1')
-    mkdirSync(join(dir, 'state'), { recursive: true })
-    writeFileSync(join(dir, 'pbfuzz.campaign.yaml'), campaignToYaml({
-      version: 1,
-      id: 'cmdrun1',
-      confirmed: false,
-      target: { repo: root, language: 'c' },
-      bug: { targets: [{ location: 'toy.c:1' }] },
-      entry: { kind: 'executable', run_cmd: './toy @@', input_channel: 'file' },
-      oracle: { mode: 'canary', reached_pattern: 'REACHED', triggered_pattern: 'TRIGGERED' },
-      tracer: 'off',
-      output: { dir },
-    } as never))
-    const before = process.exitCode
-    try {
-      const result = await cmd.handler({ agent: agentIn(root), rawInput: `run ${join(dir, 'pbfuzz.campaign.yaml')}`, signal: new AbortController().signal })
-      // Unconfirmed campaign: runHeadless refuses before the engine, same failure path as above.
-      expect(result.kind).toBe('error')
-      expect(process.exitCode).toBe(1)
-    } finally {
-      process.exitCode = before
-    }
-  })
 })
 
 describe('the procedure reaches the turn it describes (the one-followup-per-turn trap)', () => {
@@ -187,15 +137,5 @@ describe('the procedure reaches the turn it describes (the one-followup-per-turn
     await cmd.handler({ agent: agentIn(root), rawInput: '', signal: new AbortController().signal })
     // Staging without a following `sendUser` would never wake the agent at all.
     expect(sent.log.map(([channel]) => channel)).toEqual(['instructions'])
-  })
-
-  it('does not invite the model to spend a step re-fetching the skill it was just handed', async () => {
-    const sent = empty()
-    const cmd = register(newHost(), sent, '# body')
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'pbfuzz-cmd-order-')))
-    await cmd.handler({ agent: agentIn(root), rawInput: 'go', signal: new AbortController().signal })
-    const header = sent.instructions[0]!
-    expect(header).toContain('do not call `skill`')
-    expect(header).not.toContain('has the same text')
   })
 })

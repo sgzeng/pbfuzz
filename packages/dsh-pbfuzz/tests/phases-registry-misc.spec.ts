@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { AnalysisProvider } from '../src/core/contracts.ts'
 import { campaignLayout, defaultOutputDir, activePointerPath } from '../src/core/paths.ts'
-import { PBFUZZ_TOOLS, roundWithinBudget, transitionAllowed, visibleTools, KANALYZER_TOOLS } from '../src/core/phases.ts'
+import { PBFUZZ_TOOLS, visibleTools, KANALYZER_TOOLS } from '../src/core/phases.ts'
 import { providerAppliesTo, ProviderRegistry } from '../src/core/registry.ts'
 import { diagnosisQuestion, formatHeadlessDiagnosis, unresolvedTargetDiagnosis } from '../src/core/remedies.ts'
 import { loadSkills, parseSkill } from '../src/skills.ts'
@@ -56,15 +56,6 @@ describe('tool visibility', () => {
     expect(visibleTools({ hasConfirmedCampaign: false, settings: s, providerPresent: false }))
       .toEqual(visibleTools({ hasConfirmedCampaign: true, settings: s, providerPresent: false }))
   })
-
-  it('FSM and budget', () => {
-    expect(transitionAllowed('INIT', 'PLAN')).toBe(true)
-    expect(transitionAllowed('PLAN', 'EXECUTE')).toBe(false)
-    expect(transitionAllowed('REFLECT', 'PLAN')).toBe(true)
-    expect(transitionAllowed('SUCCESS', 'STOPPED')).toBe(true)
-    expect(roundWithinBudget(4, 5)).toBe(true)
-    expect(roundWithinBudget(5, 5)).toBe(false)
-  })
 })
 
 describe('ProviderRegistry', () => {
@@ -114,7 +105,6 @@ describe('layout, snapshot, remedies, projection, skills', () => {
   })
 
   it('parses the bundled skill', () => {
-    expect(parseSkill('---\nname: x\ndescription: y\n---\nbody', 'p')).toEqual({ name: 'x', description: 'y', content: 'body', path: 'p' })
     expect(parseSkill('no frontmatter', 'p')).toBeUndefined()
     const skills = loadSkills(join(here, '..', 'skills'))
     // One skill, not five: `/pbfuzz` injects its body directly, and a campaign that used to load

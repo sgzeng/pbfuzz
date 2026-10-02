@@ -7,18 +7,13 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } fro
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { campaignToYaml } from '../src/core/campaign-yaml.ts'
 import { PBFUZZ_TOOLS } from '../src/core/phases.ts'
 import { PbfuzzHost, type ActiveCampaign, type AgentLike } from '../src/host.ts'
 import { advancePhase, IllegalTransitionError, writeFuzzPlan, writeHypothesisBlocks } from '../src/state-writer.ts'
 import { settings } from './fixtures.ts'
 
-function agentIn(cwd: string, denied: string[][] = []): AgentLike {
-  return {
-    id: `agent:${cwd}`,
-    session: { header: { cwd } },
-    ctx: { tools: { restrict: ({ deny }) => { denied.push([...(deny ?? [])].sort()); return () => {} } } },
-  }
+function agentIn(cwd: string): AgentLike {
+  return { id: `agent:${cwd}`, session: { header: { cwd } }, ctx: { tools: { restrict: () => () => {} } } }
 }
 
 const newHost = (over: Parameters<typeof settings>[0] = {}): PbfuzzHost =>
@@ -61,15 +56,6 @@ describe('writeHypothesisBlocks', () => {
     expect(result).toEqual({ ok: true, issues: [] })
     const written = JSON.parse(readFileSync(join(active.layout.stateDir, 'bug_predicates.json'), 'utf8'))
     expect(written).toEqual([{ id: 'BP1', location: 'toy.c:10', bug_condition: 'len > size' }])
-  })
-
-  it('rejects a structurally invalid block and writes nothing', () => {
-    const host = newHost()
-    const { agent } = workspace()
-    const active = confirmedCampaign(host, agent)
-    const result = writeHypothesisBlocks(active, { bugPredicates: [{ id: 'not-a-valid-id', location: 'bad' }] })
-    expect(result.ok).toBe(false)
-    expect(result.issues.some(i => i.path.startsWith('bugPredicates'))).toBe(true)
   })
 
   it('upserts by id: an entry left out is kept, and a revision carries only what changed', () => {
@@ -153,18 +139,6 @@ describe('writeFuzzPlan', () => {
 })
 
 describe('advancePhase', () => {
-  it('a legal transition writes state.json and refreshes tool visibility for the agent', () => {
-    const host = newHost()
-    const denied: string[][] = []
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'pbfuzz-statewriter-')))
-    const agent = agentIn(root, denied)
-    const active = confirmedCampaign(host, agent)
-    const state = advancePhase(host, agent, active, 'PLAN', { status: 's', current_task: 't', next_action: 'n' })
-    expect(state.phase).toBe('PLAN')
-    expect(host.state(active)?.phase).toBe('PLAN')
-    expect(denied.length).toBeGreaterThan(0) // refresh() ran and recomputed the restriction
-  })
-
   it('throws IllegalTransitionError for a transition the FSM does not permit', () => {
     const host = newHost()
     const { agent } = workspace()

@@ -46,7 +46,6 @@ import pytest
 
 from pbfuzz_engine.tracers import gdb_batch, lldb_batch
 from pbfuzz_engine.tracers import pymon as pymon_mod
-from pbfuzz_engine.tracers._pymon_runner import FLUSH_INTERVAL_SEC as PYMON_FLUSH_INTERVAL_SEC
 from pbfuzz_engine.tracers.base import Breakpoint, build_command, which
 from pbfuzz_engine.tracers.gdb_batch import FLUSH_INTERVAL_SEC
 
@@ -65,14 +64,6 @@ WINDOW_SEC = 4.0  # fixed wall-clock window the hot breakpoint runs under
 # because scheduling jitter under a loaded or emulated host can shift flush boundaries.
 MAX_EXPECTED_FLUSHES = int(WINDOW_SEC / FLUSH_INTERVAL_SEC) + 8
 MIN_HITS_FOR_MEANINGFUL_TEST = 20  # else the window was too short to prove anything
-
-
-def test_flush_interval_constant_is_shared_by_construction():
-    """The three backends duplicate the interval (they don't cross-import -- see each
-    module's docstring), but it must be the same value everywhere or the batching
-    behaviour would silently differ by tracer."""
-    assert FLUSH_INTERVAL_SEC == PYMON_FLUSH_INTERVAL_SEC
-    assert FLUSH_INTERVAL_SEC > 0
 
 
 def _check_report(out_path: Path, corrupted: list, samples: list) -> None:

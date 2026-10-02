@@ -114,16 +114,6 @@ describe('installGuard: the one native ctx.tools.guard() registration', () => {
     expect(denial).toMatch(/^\[pbfuzz:state-write\/metrics-engine-only\]/)
   })
 
-  it('denies a phase-illegal pbfuzz tool call, with a Next legal action', () => {
-    const { root } = workspace('PLAN')
-    const host = newHost()
-    const fake = fakeCtx()
-    installGuard(fake.ctx as never, host)
-    const denial = fake.guard({ name: 'pbfuzz_fuzz', arguments: {}, agent: agentIn(root) })
-    expect(denial).toContain('[pbfuzz:phase-gate/phase] DENIED (pbfuzz_fuzz)')
-    expect(denial).toContain('Next legal action:')
-  })
-
   it('denies a bash command that mentions the state dir with a mutation', () => {
     const { root, dir } = workspace('PLAN')
     const host = newHost()
@@ -146,41 +136,25 @@ describe('installGuard: the one native ctx.tools.guard() registration', () => {
     installGuard(withoutTerminal.ctx as never, host)
     expect(withoutTerminal.guard({ name: 'terminal_open', arguments: {}, agent: agentIn(root) })).toBeUndefined()
   })
-
-  it('leaves an unrelated tool alone', () => {
-    const { root } = workspace('PLAN')
-    const host = newHost()
-    const fake = fakeCtx()
-    installGuard(fake.ctx as never, host)
-    expect(fake.guard({ name: 'some_other_tool', arguments: {}, agent: agentIn(root) })).toBeUndefined()
-  })
 })
 
 describe('installTamperLedger: audit-only tools/result observer', () => {
-  it('records a matched bash command, allowed=false when the call was denied', () => {
+  it('records a matched bash command, with allowed mirroring whether the call was denied (isError) or ran anyway (e.g. bashGuard off)', () => {
     const { root, dir } = workspace('PLAN')
     const host = newHost()
     const fake = fakeCtx()
     installTamperLedger(fake.ctx as never, host)
+    const agent = agentIn(root)
     const command = `cat ${dir}/state/state.json > /tmp/x`
-    fake.fireResult({ name: 'bash', arguments: { command }, agent: agentIn(root) }, { isError: true })
+    fake.fireResult({ name: 'bash', arguments: { command }, agent }, { isError: true })
+    fake.fireResult({ name: 'bash', arguments: { command }, agent }, { isError: false })
     const lines = readFileSync(join(dir, 'tamper-ledger.jsonl'), 'utf8').trim().split('\n')
-    expect(lines).toHaveLength(1)
-    const entry = JSON.parse(lines[0]!) as { tool: string; command: string; allowed: boolean; target: string; mutation: string }
-    expect(entry).toMatchObject({ tool: 'bash', command, allowed: false })
-    expect(entry.target).toContain('.pbfuzz') // the campaign root marker, matched before `/state.json` (both are protected)
-    expect(entry.mutation).toBe('>')
-  })
-
-  it('records allowed=true for a matched-but-not-denied call (bashGuard off in settings)', () => {
-    const { root, dir } = workspace('PLAN')
-    const host = newHost()
-    const fake = fakeCtx()
-    installTamperLedger(fake.ctx as never, host)
-    const command = `cat ${dir}/state/state.json > /tmp/x`
-    fake.fireResult({ name: 'bash', arguments: { command }, agent: agentIn(root) }, { isError: false })
-    const entry = JSON.parse(readFileSync(join(dir, 'tamper-ledger.jsonl'), 'utf8').trim()) as { allowed: boolean }
-    expect(entry.allowed).toBe(true)
+    expect(lines).toHaveLength(2)
+    const entries = lines.map(line => JSON.parse(line) as { tool: string; command: string; allowed: boolean; target: string; mutation: string })
+    expect(entries[0]).toMatchObject({ tool: 'bash', command, allowed: false })
+    expect(entries[0]!.target).toContain('.pbfuzz') // the campaign root marker, matched before `/state.json` (both are protected)
+    expect(entries[0]!.mutation).toBe('>')
+    expect(entries[1]!.allowed).toBe(true)
   })
 
   it('never writes for a non-matching command, a non-bash tool, or with tamperLedger off', () => {

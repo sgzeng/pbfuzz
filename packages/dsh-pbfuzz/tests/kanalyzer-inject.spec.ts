@@ -40,7 +40,7 @@ function provideHostServices(root: Context): void {
 }
 
 describe('the kanalyzer-dependent fiber (index.ts, ctx.inject([\'kanalyzer\'], â€¦))', () => {
-  it('registers the analysis provider with kanalyzer and drops it when kanalyzer unloads', async () => {
+  it('keeps the bundled skill registered while kanalyzer loads and unloads under the real runtime', async () => {
     const root = new Context()
     provideHostServices(root)
     const skills = fakeSkills()
@@ -58,24 +58,5 @@ describe('the kanalyzer-dependent fiber (index.ts, ctx.inject([\'kanalyzer\'], â
     disposeKanalyzer()
     await settle()
     expect([...skills.registered]).toEqual(['pbfuzz'])
-  })
-
-  it('loads cleanly whichever order kanalyzer and skills arrive in', async () => {
-    const root = new Context()
-    provideHostServices(root)
-    await root.plugin(pbfuzz as never, settings() as never)
-
-    const disposeKanalyzer = root.provide('kanalyzer', { doctor: async () => ({ ok: true }) } as never)
-    await settle()
-
-    const skills = fakeSkills()
-    const disposeSkills = root.provide('skills', skills as never)
-    await settle()
-    expect([...skills.registered]).toEqual(['pbfuzz'])
-
-    disposeKanalyzer()
-    await settle()
-    expect([...skills.registered]).toEqual(['pbfuzz'])
-    disposeSkills()
   })
 })

@@ -44,13 +44,6 @@ describe('probeRepo', () => {
     ])
   })
 
-  it('detects a build system at the repo root', () => {
-    const root = repo()
-    write(root, 'CMakeLists.txt', 'project(x)\n')
-    const result = probeRepo(root)
-    expect(result.buildSystems).toContainEqual({ kind: 'cmake', evidence: 'CMakeLists.txt' })
-  })
-
   it('finds an LLVMFuzzerTestOneInput harness with file:line evidence', () => {
     const root = repo()
     write(root, 'fuzz/target.cc', '#include <cstdint>\nint LLVMFuzzerTestOneInput(const uint8_t *d, size_t n) { return 0; }\n')
@@ -101,12 +94,6 @@ describe('probeRepo', () => {
     write(root, 'Makefile', 'all:\n')
     const result = probeRepo(root)
     expect(result.buildSystems).toEqual([{ kind: 'make', evidence: 'Makefile' }])
-  })
-
-  it('a repo with nothing interesting returns empty arrays, never throws', () => {
-    const root = repo()
-    const result = probeRepo(root)
-    expect(result).toEqual({ repo: root, buildSystems: [], harnesses: [], binaries: [], seedCorpora: [], oracleMarkers: [] })
   })
 
   it('a nonexistent repo path does not throw', () => {

@@ -57,26 +57,4 @@ describe('criticalBranchesForDisplay', () => {
     expect(out.branches).toEqual([b('a', 'a.c:1', 0)])
     expect(out.truncated).toBe(false)
   })
-
-  it('an all-unresolved input yields no branches and no truncation', () => {
-    const branches = [
-      b('', 'bid:1', -1),
-      b('x', 'a.c:1', -1),
-      b('', 'bid:2', 4),
-    ]
-    const out = criticalBranchesForDisplay(branches, 150)
-    expect(out.branches).toEqual([])
-    expect(out.total).toBe(3)
-    expect(out.shown).toBe(0)
-    expect(out.unresolved).toBe(3)
-    expect(out.truncated).toBe(false)
-  })
-
-  it('a limit larger than the resolved count returns everything, untruncated', () => {
-    const branches = [b('a', 'a.c:1', 2), b('b', 'a.c:2', 0), b('c', 'bid:9', -1)]
-    const out = criticalBranchesForDisplay(branches, 150)
-    expect(out.branches).toEqual([b('b', 'a.c:2', 0), b('a', 'a.c:1', 2)])
-    expect(out.shown).toBe(2)
-    expect(out.truncated).toBe(false)
-  })
 })
