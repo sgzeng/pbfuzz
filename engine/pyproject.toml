@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "PBFuzz property-based fuzzing engine — the Python sidecar behind the dsh-pbfuzz plugin."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { text = "PolyForm-Noncommercial-1.0.0" }
 dependencies = [
   # PyYAML is the only runtime dependency: campaigns are YAML. Campaign validation is
   # hand-written against contracts/campaign.schema.json rather than delegating to

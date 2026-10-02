@@ -105,7 +105,7 @@ change; commit the generated diff together with the schema.
 
 ## License
 
-PolyForm Noncommercial License 1.0.0
+[PolyForm Noncommercial License 1.0.0](LICENSE)
 
 ## Citation
 

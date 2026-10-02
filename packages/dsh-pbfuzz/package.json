@@ -3,7 +3,7 @@
   "description": "PBFuzz as a DeepSeek Harness plugin: campaign questionnaire, PIER guards, directed-fuzzing tools and the auxiliary-analysis provider registry",
   "version": "0.1.0",
   "type": "module",
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "exports": {

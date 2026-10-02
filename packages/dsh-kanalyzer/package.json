@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "General-purpose LLVM static-analysis plugin for DeepSeek Harness: builds analysable bitcode and runs kernel-analyzer (KAMain) reachability analysis behind ctx.kanalyzer",
   "type": "module",
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {
