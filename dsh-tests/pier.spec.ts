@@ -80,7 +80,10 @@ describe('a PIER round', () => {
 
     // DSH's tool-jobs plugin woke the agent with the completion notice, which carries the digest.
     const notice = session.llm.requests.map(request => request.messages.at(-1)).find(message => message.source?.kind === 'tool-jobs')
-    expect(JSON.stringify(notice?.content)).toMatch(/background job pbfuzz_fuzz-1 .* finished \[status: completed, .*1 triggered/)
+    // The id format is DSH's (0.2.0: `pbfuzz_fuzz-1`, 0.2.1: `pbfuzz_fuzz-<hex>`), so match the real one.
+    expect(job!.id).toMatch(/^pbfuzz_fuzz-/)
+    expect(JSON.stringify(notice?.content)).toContain(`background job ${job!.id} `)
+    expect(JSON.stringify(notice?.content)).toMatch(/ finished \[status: completed, .*1 triggered/)
 
     // The engine's evidence is what let REFLECT claim success.
     const metrics = JSON.parse(readFileSync(join(campaignDir, 'state', 'metrics.json'), 'utf8'))

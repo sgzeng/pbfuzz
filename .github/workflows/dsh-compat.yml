@@ -52,7 +52,7 @@ jobs:
           npx playwright install --with-deps chromium
           sudo apt-get install -y --no-install-recommends gdb clang
 
-      - name: Compat check (pin -> typecheck -> tests -> bundles -> real dsh web)
+      - name: Compat check (pin -> typecheck -> tests -> build -> real dsh web)
         id: check
         # continue-on-error: the verdict and the issue below must run whatever happens here.
         continue-on-error: true

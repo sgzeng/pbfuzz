@@ -161,8 +161,16 @@ export function apply(ctx: Context, config: Config): void {
       sendUser: (agent, text) => {
         (agent as Agent).followup(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
       },
+      // A follow-up is a `next-turn` message: if the agent is already mid-turn (the headless
+      // `/pbfuzz run <yaml>` message opens turn 1 before this handler finishes) it is only seen
+      // AFTER that turn, i.e. after a whole campaign that never had it - recorded in two real
+      // headless runs, where "the campaign is confirmed and now in PLAN" arrived once the campaign was
+      // SUCCESS. So a busy agent gets it on the step inbox (claimed by its next step); only an idle
+      // one needs the follow-up's wake.
       sendInstructions: (agent, text) => {
-        (agent as Agent).followup(instructionMessage(text))
+        const target = agent as Agent
+        if (target.status === 'idle') target.followup(instructionMessage(text))
+        else target.inject(instructionMessage(text))
       },
       stageInstructions: (agent, text) => {
         (agent as Agent).inject(instructionMessage(text))

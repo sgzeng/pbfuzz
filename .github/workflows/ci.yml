@@ -1,12 +1,21 @@
 name: ci
 
 on:
+  # master pushes (these publish) and every PR. Not `push:` on every branch as well: a PR branch would
+  # run the whole pipeline twice per commit, once for the push and once for the pull_request.
   push:
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# A newer commit on the same branch/PR supersedes the run in flight. master is exempt: every master
+# push must finish (and may publish), and publish has its own queue below.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 jobs:
   test:
@@ -47,12 +56,11 @@ jobs:
       - name: Unit tests (vitest; includes the real-engine smoke test)
         run: pnpm -r test
 
-      - name: Client bundle self-checks
-        run: pnpm check:clients
-
       - name: Engine tests
         run: cd engine && python -m pytest -q
 
+      # Also the client-bundle self-checks (card <=> schema parity, classic-safe bundle, externals):
+      # both plugins' `build` run them, so there is no separate `check:clients` step.
       - name: Build
         run: pnpm -r build
 

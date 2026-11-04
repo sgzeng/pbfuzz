@@ -14,16 +14,16 @@ the whole web client). This is how pbfuzz keeps up, and what to check when it do
 | Re-pin every DSH version in the repo in one go | `node scripts/bump-dsh.mjs [version]` |
 | Real `dsh web` + Chromium: UI boots, both settings pages render | `scripts/smoke-web.mjs` |
 
-`compat-check.sh` runs: forced typecheck → unit tests → real-DSH tests → client bundles → build and install into a
-scratch DSH profile → web smoke. Add `DEEPSEEK_API_KEY` and run `examples/readelf-c/run.sh` for the
+`compat-check.sh` runs: forced typecheck → unit tests → real-DSH tests → build (incl. the client-bundle self-checks) and
+install into a scratch DSH profile → web smoke. DSH-independent checks (`codegen:check`) are left to the CI `test` job. Add `DEEPSEEK_API_KEY` and run `examples/readelf-c/run.sh` for the
 model-driven end-to-end (the weekly job does this when the secret exists).
 
 ## Why each layer exists
 
 - **`tsc -b` is incremental** and only compares the *sources*; after a DSH upgrade it reports "up to date"
   while the new typings would fail. `dsh-pbfuzz`'s `typecheck` therefore uses `--force`.
-- **Unit tests mock DSH.** They pass against APIs that no longer exist (the 0.2 migration kept 414 tests
-  green while `installSection` was gone). `dsh-tests/` is the layer that does not: it runs the real DSH.
+- **Unit tests mock DSH.** They pass against APIs that no longer exist (the 0.2 migration kept the whole unit
+  suite green while `installSection` was gone). `dsh-tests/` is the layer that does not: it runs the real DSH.
 - **The web client has no typecheck** (it needs DSH's client packages). A wrong import compiles to a bundle
   and fails in the browser — twice during the 0.2 migration (a removed icon, a deleted `useState` import).
   Only `smoke-web.mjs` sees those.
@@ -85,20 +85,44 @@ What it does not cover: the web client (that is `scripts/smoke-web.mjs`), a real
 3. Fix the plugins; do not weaken tests. If the break was invisible to every check, extend a check.
 4. `scripts/compat-check.sh --current`, `pnpm run test:engine`, and (with a key) `examples/readelf-c/run.sh`.
 
-## Verified on DSH 0.2.0-rc.2 (2026-10-02)
+## Verified on DSH 0.2.1-rc.5 (2026-11-04)
 
-- `pnpm -r typecheck` (forced), `pnpm -r test` (pbfuzz 419, kanalyzer 242), `check:clients`, `codegen:check`: pass.
-- `pnpm run test:engine`: 262 pass; 1 fails — `test_corpus_unreadable_seed_is_skipped_not_fatal`, which cannot hold
-  under root (`chmod 000` does not deny root) and predates this work.
-- `scripts/compat-check.sh --current`: `COMPAT-OK`. Against an old release (`0.1.5-rc.1`) it fails with
-  `COMPAT-FAILED-AT: typecheck (forced)`, so a red result is reachable.
-- Web UI: both settings pages render under Plugins → Configure; editing `Max PIER rounds` and saving lands in the
-  profile's `cordis.patch.yml` while keeping `pythonPath`; no console errors.
+DSH's `latest` moved 0.2.0-rc.2 → 0.2.1-rc.5. The plugins are compatible; the only change needed was a
+test-side one (see below). Re-pinned with `node scripts/bump-dsh.mjs 0.2.1-rc.5`.
+
+- `pnpm -r typecheck` (forced), `pnpm -r test` (pbfuzz 364, kanalyzer 210), `check:clients`, `codegen:check`: pass.
+- `pnpm run test:dsh` (the real DSH 0.2.1-rc.5 booted in-process, both plugins installed as a user installs them,
+  a whole PIER round driven through it): 18 pass.
+- `pnpm run test:engine`: 243 pass. (`test_corpus_unreadable_seed_is_skipped_not_fatal` was removed: it can never pass
+  as root, because `chmod 000` does not deny root, and CI/sandboxes run as root.)
 - Headless, real model (`examples/readelf-c/run.sh`, fresh profile from the final `install.sh`, clean workspace):
-  `SUCCESS` in PIER round 1, ~70 s, PoC reproduced 3/3 by the engine and by hand (exit 134).
+  `SUCCESS` in PIER round 1, ~71 s, PoC reproduced 3/3 by the engine and by hand (exit 134).
+- Headless, real model (`examples/magma/`, LUA001, patch hidden from disk the whole session): `SUCCESS` in
+  round 1, ~88 s, PoC reproduced 3/3; by hand the Magma canary prints `reached`/`triggered` and `lua` segfaults
+  (exit 139). See `examples/magma/README.md`.
+
+**The one break on 0.2.1-rc.5:** DSH changed its job-id format from `<kind>-<n>` (`pbfuzz_fuzz-1`) to
+`<kind>-<hex>` (`pbfuzz_fuzz-e98fd85d201e4063`). No plugin code depends on the format — the plugin reads the id
+DSH hands back — but `dsh-tests/pier.spec.ts` hard-coded `pbfuzz_fuzz-1` in the completion-notice assertion. Fixed
+to match the real job's id (`job!.id`), so the assertion holds on either format.
+
+**The one pbfuzz bug the session logs showed** (found by decoding `~/.dsh/sessions/*/session.v4.jsonl.zstd` of both
+runs): the headless `/pbfuzz run <yaml>` kickoff ("campaign … is confirmed and now in PLAN, call pbfuzz_plan …") was queued
+as a `next-turn` follow-up. The `/pbfuzz run` message itself opens turn 1, so the follow-up was only delivered after
+turn 1, when the campaign was already `SUCCESS`; the agent saw a stale instruction in a spurious turn 2 and correctly
+ignored it. `sendInstructions` now puts it on the step inbox when the agent is busy (a follow-up only when idle);
+`dsh-tests/turn.spec.ts` covers it and fails without the fix.
+
+**Why the weekly `dsh-compat` was red for a month, and why it was not the plugins** (read from the failed runs' `compat-log`
+artifacts): (1) from DSH 0.2.1-rc.2 on, `dsh-tests/pier.spec.ts` hard-coded the old job id `pbfuzz_fuzz-1` (fixed, above);
+(2) `scripts/smoke-web.mjs` could not click "Plugins" on a CI runner because DSH puts a modal over the UI — the one-off
+"Preview Notice" and, whenever DSH has no DeepSeek credential, "Get started: sign in or add an API key". A dev machine
+with `DEEPSEEK_API_KEY` never sees the second one, which is why it was green locally and red on GitHub (it also failed on
+0.2.0-rc.2 on 2026-10-05/12). The smoke now dismisses whichever modal blocks a click and retries; verified with the key
+unset (the runner's situation) and set; (3) `claude-autofix` then failed every week because `ANTHROPIC_API_KEY` is not
+set, hiding both of the above; it now skips with a warning. If you debug the web smoke locally, run it with
+`env -u DEEPSEEK_API_KEY`, or you are not testing what CI tests.
 
 **Not verified:** the campaign *dashboard* on the session page (slot `conversation.session.header.utilities`;
-`smoke-web.mjs` does not open a session yet — its one known break, a removed icon, is fixed), a Magma run on 0.2
-(the Magma record in `examples/magma/README.md` is from 0.1.5), the kanalyzer toolchain itself (LLVM 14 build and
-`/kanalyzer doctor`; only its plugin loading and settings page were exercised), and the two GitHub workflows
-(linted with `actionlint`, `compat-check.sh` run locally, but never run on GitHub).
+`smoke-web.mjs` does not open a session yet), the kanalyzer toolchain itself (LLVM 14 build and
+`/kanalyzer doctor`; only its plugin loading and settings page were exercised).
