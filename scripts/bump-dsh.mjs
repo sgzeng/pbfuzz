@@ -17,8 +17,9 @@ const npm = (...args) => execFileSync('npm', args, { encoding: 'utf8' }).trim()
 const npmJson = (...args) => JSON.parse(npm(...args, '--json'))
 
 const version = process.argv[2] ?? npm('view', '@deepseek-ai/dsh', 'dist-tags.latest')
-const next = version.replace(/^(\d+)\.(\d+)\..*$/, (_, major, minor) => (major === '0' ? `0.${Number(minor) + 1}.0` : `${Number(major) + 1}.0.0`))
-const dshRange = `>=${version} <${next}`
+// A floor only, on purpose: the plugins are meant to run on every newer DSH. CI (dsh-latest) and the weekly
+// dsh-compat job test the newest one, and a break there is fixed in the plugins, not hidden by a cap.
+const dshRange = `>=${version}`
 
 // What DSH itself requires of the two libraries it shares with plugins.
 const dshDeps = npmJson('view', `@deepseek-ai/dsh@${version}`, 'dependencies')
