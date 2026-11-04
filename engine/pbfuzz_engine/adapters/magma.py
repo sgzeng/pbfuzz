@@ -111,6 +111,9 @@ class MagmaAdapterInput:
         seeds_dir: `analysis.corpus.seeds_dir`; Magma ships one per target under
             `magma/targets/<name>/corpus/<program>`.
         output_dir: `output.dir`; defaults to `<target_repo>/.pbfuzz/<campaign_id>`.
+        build_cmd: `build.cmd`, the command kanalyzer runs to rebuild the target with LTO bitcode
+            for static analysis (run in the target repo; see examples/magma/kanalyzer-build-poppler.sh).
+            Without it kanalyzer cannot prepare, so static analysis silently has nothing to work with.
         static_analysis: False when kanalyzer is not installed and no `prebuilt_dir` exists:
             static analysis is recorded as disabled and deviation detection drops to
             `target_only` (`critical_bb` needs static analysis).
@@ -132,6 +135,7 @@ class MagmaAdapterInput:
     lto_libs: tuple[str, ...] = ()
     seeds_dir: str | None = None
     output_dir: str | None = None
+    build_cmd: str | None = None
     static_analysis: bool = True
 
 
@@ -283,6 +287,8 @@ def build_campaign(input: MagmaAdapterInput) -> dict[str, Any]:
         "output": {"dir": output_dir},
         "analysis": {"static": static, "corpus": corpus, "deviation": deviation},
     }
+    if input.build_cmd:
+        campaign["build"] = {"cmd": input.build_cmd}
     return campaign
 
 
@@ -379,6 +385,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--seeds-dir")
     parser.add_argument("--output-dir")
+    parser.add_argument(
+        "--build-cmd",
+        help="build.cmd for kanalyzer: rebuild the target with LTO bitcode (static analysis needs it).",
+    )
     parser.add_argument("--write", help="Write the yaml here instead of stdout.")
     return parser
 
@@ -422,6 +432,7 @@ def main(argv: list[str] | None = None) -> int:
         lto_libs=tuple(args.lto_libs),
         seeds_dir=args.seeds_dir,
         output_dir=args.output_dir,
+        build_cmd=args.build_cmd,
         static_analysis=args.static_analysis,
     )
     text = campaign_to_yaml(build_campaign(campaign_input), header=provenance_header(campaign_input))

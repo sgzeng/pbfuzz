@@ -18,6 +18,8 @@
 # Static analysis: off by default — the campaign runs on gdb traces alone. Set PREBUILT_DIR to a
 # directory of KAMain outputs (Magma's SKIP_STATIC_ANALYSIS path, or a previous kanalyzer run), or
 # STATIC_ANALYSIS=1 to have kanalyzer build bitcode itself (needs ./install.sh --with-kanalyzer).
+# kanalyzer needs a build.cmd for that. For poppler, STATIC_ANALYSIS=1 (with MAGMA_ROOT set) copies
+# kanalyzer-build-poppler.sh into the target repo and writes build.cmd for it; BUILD_CMD overrides.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PBFUZZ_ROOT="$(cd "$HERE/../.." && pwd)"
@@ -63,6 +65,17 @@ fi
 corpus_args=()
 [ -d "$SEEDS_DIR" ] && corpus_args=(--seeds-dir "$SEEDS_DIR")
 
+# build.cmd for kanalyzer (static analysis only). kanalyzer runs it in an isolated copy of target.repo,
+# so the poppler script is copied into the repo and referenced by a path inside it.
+if [ -z "${BUILD_CMD:-}" ] && [ "${STATIC_ANALYSIS:-0}" = 1 ] && [ "$TARGET_NAME" = poppler ]; then
+  : "${MAGMA_ROOT:?set MAGMA_ROOT (the poppler build script needs canary.h and afl_driver.cpp from it)}"
+  mkdir -p "$REPO/.pbfuzz"
+  cp "$HERE/kanalyzer-build-poppler.sh" "$REPO/.pbfuzz/kanalyzer-build.sh"
+  BUILD_CMD="MAGMA_ROOT=$(cd "$MAGMA_ROOT" && pwd) WORK=$(cd "$WORK" && pwd) bash .pbfuzz/kanalyzer-build.sh"
+fi
+build_args=()
+[ -n "${BUILD_CMD:-}" ] && build_args=(--build-cmd "$BUILD_CMD")
+
 "$PY" -m pbfuzz_engine.adapters.magma \
   --target-name "$TARGET_NAME" \
   --target-repo "$REPO" \
@@ -72,6 +85,7 @@ corpus_args=()
   --bbtargets "$BBTARGETS" \
   "${static_args[@]}" \
   "${corpus_args[@]}" \
+  "${build_args[@]}" \
   --write "$OUTPUT"
 
 echo "$OUTPUT"
