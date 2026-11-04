@@ -113,6 +113,16 @@ turn 1, when the campaign was already `SUCCESS`; the agent saw a stale instructi
 ignored it. `sendInstructions` now puts it on the step inbox when the agent is busy (a follow-up only when idle);
 `dsh-tests/turn.spec.ts` covers it and fails without the fix.
 
+**Why the weekly `dsh-compat` was red for a month, and why it was not the plugins** (read from the failed runs' `compat-log`
+artifacts): (1) from DSH 0.2.1-rc.2 on, `dsh-tests/pier.spec.ts` hard-coded the old job id `pbfuzz_fuzz-1` (fixed, above);
+(2) `scripts/smoke-web.mjs` could not click "Plugins" on a CI runner because DSH puts a modal over the UI — the one-off
+"Preview Notice" and, whenever DSH has no DeepSeek credential, "Get started: sign in or add an API key". A dev machine
+with `DEEPSEEK_API_KEY` never sees the second one, which is why it was green locally and red on GitHub (it also failed on
+0.2.0-rc.2 on 2026-10-05/12). The smoke now dismisses whichever modal blocks a click and retries; verified with the key
+unset (the runner's situation) and set; (3) `claude-autofix` then failed every week because `ANTHROPIC_API_KEY` is not
+set, hiding both of the above; it now skips with a warning. If you debug the web smoke locally, run it with
+`env -u DEEPSEEK_API_KEY`, or you are not testing what CI tests.
+
 **Not verified:** the campaign *dashboard* on the session page (slot `conversation.session.header.utilities`;
 `smoke-web.mjs` does not open a session yet), the kanalyzer toolchain itself (LLVM 14 build and
 `/kanalyzer doctor`; only its plugin loading and settings page were exercised).

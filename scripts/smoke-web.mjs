@@ -56,11 +56,28 @@ try {
   page.on('pageerror', error => { errors.push(`pageerror: ${error.message}`) })
   page.on('console', message => { if (message.type() === 'error') errors.push(`console: ${message.text().slice(0, 300)}`) })
 
+  // DSH 0.2 puts modals over the UI, and a modal's mask swallows every click:
+  //   - "Preview Notice" (Continue) - once per browser profile;
+  //   - "Get started: sign in or add an API key" - on every load while DSH has no DeepSeek
+  //     credential. A dev machine with DEEPSEEK_API_KEY never sees it; a CI runner always does.
+  // Neither is ours to test, and neither shows up at a predictable moment (both render after the
+  // sidebar), so: try to click, and when something is in the way dismiss whichever modal is up and
+  // try again. An earlier version waited 3 s for "Continue" and ignored a timeout, and never knew
+  // about the second modal: green here, red on the runner (weekly dsh-compat, 10-05, 10-12, 11-04).
+  const clickPastModals = async (locator, timeout = 20_000) => {
+    const deadline = Date.now() + timeout
+    for (;;) {
+      const proceed = page.getByRole('button', { name: 'Continue' })
+      if (await proceed.isVisible()) await proceed.click()
+      else if (await page.getByText('Get started', { exact: true }).first().isVisible()) await page.keyboard.press('Escape')
+      try { await locator.click({ timeout: 3000 }); return } catch (error) { if (Date.now() > deadline) throw error }
+    }
+  }
   const openPlugins = async () => {
     await page.goto(url, { waitUntil: 'domcontentloaded' })
-    await page.getByText('Plugins', { exact: true }).first().waitFor({ timeout: 60_000 })
-    await page.getByRole('button', { name: 'Continue' }).click({ timeout: 3000 }).catch(() => { /* preview notice, shown until accepted */ })
-    await page.getByText('Plugins', { exact: true }).first().click()
+    const plugins = page.getByText('Plugins', { exact: true }).first()
+    await plugins.waitFor({ timeout: 60_000 })
+    await clickPastModals(plugins, 30_000)
   }
   await openPlugins()
   ok('web UI booted')
@@ -68,8 +85,8 @@ try {
   // One bundle at a time: bundle page -> the row's Configure -> the plugin's own form.
   const check = async (bundle, row, expectText) => {
     await openPlugins()
-    await page.getByText(bundle, { exact: true }).first().click({ timeout: 20_000 })
-    await page.getByRole('button', { name: `Configure ${bundle}` }).click({ timeout: 20_000 })
+    await clickPastModals(page.getByText(bundle, { exact: true }).first())
+    await clickPastModals(page.getByRole('button', { name: `Configure ${bundle}` }))
     try {
       await page.getByText(expectText).first().waitFor({ timeout: 15_000 })
       ok(`${bundle}: settings page rendered ("${expectText}")`)
