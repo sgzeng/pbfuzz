@@ -17,26 +17,26 @@ your DeepSeek API key. Use the DSH version these plugins are verified against (`
 **2. Install pbfuzz from npm**
 
 ```sh
-npx @deepseek-ai/dsh@0.2.0-rc.2 plugin --profile web add @pbfuzz/dsh-pbfuzz
+npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add @pbfuzz/dsh-pbfuzz
 ```
 
 That is all: the package ships the Python engine, its schemas and PyYAML.
-Then start DSH with `npx @deepseek-ai/dsh@0.2.0-rc.2 web`.
+Then start DSH with `npx @deepseek-ai/dsh@0.2.1-rc.5 web`.
 
 Optional static analysis (C/C++ reachability; needs an LLVM 14 toolchain, see
 [`packages/dsh-kanalyzer`](packages/dsh-kanalyzer)):
 
 ```sh
-npx @deepseek-ai/dsh@0.2.0-rc.2 plugin --profile web add @pbfuzz/dsh-kanalyzer
+npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add @pbfuzz/dsh-kanalyzer
 ```
 
 Manage the install with the same `plugin` command (add `--profile NAME` for a profile other than
 `web`), and restart DSH afterwards:
 
 ```sh
-npx @deepseek-ai/dsh@0.2.0-rc.2 plugin --profile web list                              # installed plugins and versions
-npx @deepseek-ai/dsh@0.2.0-rc.2 plugin --profile web add @pbfuzz/dsh-pbfuzz@0.1.14     # a specific release
-npx @deepseek-ai/dsh@0.2.0-rc.2 plugin --profile web remove @pbfuzz/dsh-pbfuzz
+npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web list                              # installed plugins and versions
+npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add @pbfuzz/dsh-pbfuzz@0.1.14     # a specific release
+npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web remove @pbfuzz/dsh-pbfuzz
 ```
 
 To move to a newer release, `add` it by exact version; `npm view @pbfuzz/dsh-pbfuzz version`
@@ -51,7 +51,7 @@ git clone <this-repo-url> pbfuzz-dsh && cd pbfuzz-dsh
 ```
 
 That builds the plugins and the Python engine and adds the local build to DSH. Restart
-`npx @deepseek-ai/dsh@0.2.0-rc.2 web` and you're done.
+`npx @deepseek-ai/dsh@0.2.1-rc.5 web` and you're done.
 
 | Script | Does |
 |---|---|

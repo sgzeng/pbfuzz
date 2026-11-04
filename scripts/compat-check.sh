@@ -7,8 +7,8 @@
 #
 # Every step runs against the real DSH packages: forced typecheck (tsc -b alone skips work when only
 # the typings changed), unit tests, the in-process real-DSH tests (dsh-tests/: the real DSH booted
-# with the plugins installed, a whole PIER round driven through it, no mocks), client bundles, then
-# the plugins are built, installed into a
+# with the plugins installed, a whole PIER round driven through it, no mocks), then
+# the plugins are built (client bundles and their self-checks included), installed into a
 # scratch DSH profile and a real `dsh web` is driven with Chromium (scripts/smoke-web.mjs). The
 # web step is the one that caught the 0.2 `settingsScope` removal: the host half was fine, both
 # client bundles silently never activated and the UI was blank.
@@ -43,11 +43,9 @@ pnpm -r test
 step "real-DSH tests (in-process DSH $DSH_VERSION)"
 PBFUZZ_DSH_VERSION=$DSH_VERSION pnpm run test:dsh
 
-step "client bundles + contracts"
-pnpm run check:clients
-pnpm run codegen:check
-
-step "build and install into a scratch DSH profile"
+# No separate client-bundle / codegen steps: the build below runs both plugins' bundle self-checks, and
+# `codegen:check` does not depend on the DSH version (the CI `test` job covers it on every push).
+step "build (plugins + client bundles) and install into a scratch DSH profile"
 SCRATCH=$(mktemp -d)
 trap 'echo "COMPAT-FAILED-AT: $STEP" >&2; rm -rf "$SCRATCH"' ERR
 trap 'rm -rf "$SCRATCH"' EXIT

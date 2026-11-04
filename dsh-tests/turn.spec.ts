@@ -33,6 +33,22 @@ describe('an agent turn', () => {
     expect(answer.text).toMatch(/DENIED.*pbfuzz_fuzz is not legal in phase PLAN.*pbfuzz_plan/)
   })
 
+  it('a headless `/pbfuzz run` typed as the user message gives the model its kickoff in the SAME turn', async () => {
+    // `dsh "/pbfuzz run <yaml>"` is a user message: it opens turn 1 and the command handler finishes a
+    // moment later, mid-turn. Queued as a next-turn follow-up, the kickoff ("confirmed and now in PLAN,
+    // call pbfuzz_plan ...") reached the model only after that turn - in two recorded real headless
+    // runs after the campaign was already SUCCESS. The model's first step is a tool call, so the
+    // turn is still open at its second request, which must already carry the kickoff.
+    const session = await openSession(dsh)
+    session.llm.enqueue({ toolCalls: [{ name: 'pbfuzz_campaign', arguments: { action: 'status' } }] }, { text: 'done' }, { text: 'spare' }, { text: 'spare' })
+
+    await session.say(`/pbfuzz run ${session.workspace.campaignPath}`)
+    await waitUntil('the model to be asked twice', () => session.llm.requests.length >= 2)
+
+    const kickoff = session.llm.requests[1].messages.filter((message: any) => message.source?.kind === 'pbfuzz')
+    expect(JSON.stringify(kickoff)).toMatch(/is confirmed and now in PLAN.*pbfuzz_plan/)
+  })
+
   it('the PIER driver nudges a model that stops mid-campaign, and in a headless run stops the campaign at the cap', async () => {
     await dsh.ctx.get('settings').update('pbfuzz', { budget: { maxConsecutiveForcedContinues: 1 } })
     const session = await openSession(dsh)

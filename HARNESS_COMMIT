@@ -2,8 +2,8 @@
 # `node scripts/bump-dsh.mjs [version]` re-pins everything below (and the package.json /
 # pnpm-workspace.yaml pins) in one go; .github/workflows/dsh-compat.yml runs it weekly against npm's
 # latest. Bump only together with a green compat run.
-DSH_VERSION=0.2.0-rc.2
-DSH_PEER_RANGE=>=0.2.0-rc.2 <0.3.0
+DSH_VERSION=0.2.1-rc.5
+DSH_PEER_RANGE=>=0.2.1-rc.5 <0.3.0
 # cordis and schemastery are versioned independently of DSH — do NOT give them DSH_PEER_RANGE.
-CORDIS_PEER_RANGE=>=4.0.4 <5.0.0
-SCHEMASTERY_RANGE=^3.18.4
+CORDIS_PEER_RANGE=>=4.0.5 <5.0.0
+SCHEMASTERY_RANGE=^3.18.5
