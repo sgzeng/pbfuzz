@@ -36,8 +36,8 @@ inside the newest DSH?**
 
 - `global-setup.ts` installs `@deepseek-ai/dsh` at npm's `latest` (never the lockfile's version; cached under
   `.dsh-real/`, keyed by version), builds and packs both plugins, and runs the real `dsh plugin add` into a scratch
-  profile (the packed plugin carries its engine, so the run uses that copy, not the repo's). DSH's own peer-range admission happens there, so a latest DSH outside the plugins' declared range fails
-  the run with `would not install ... run node scripts/bump-dsh.mjs <version>`.
+  profile (the packed plugin carries its engine, so the run uses that copy, not the repo's). DSH's own peer-range admission happens there. The plugins declare only a floor (`>=` the DSH they are developed on,
+  no `<0.3.0`-style cap), so a newer DSH is never refused by range; if one does break the plugins, the specs below go red.
 - `harness.ts` boots that profile in-process with the same `runProfile()` the `dsh` binary calls. Each spec gets
   its own copy of the DSH home (and `HOME`), so nothing touches the machine's real `~/.dsh`.
 - **Only the model is scripted** (`scripted-llm.ts`: a subclass of DSH's real `LlmAdapter` registered with the
