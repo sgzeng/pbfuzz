@@ -27,14 +27,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  fix:
-    # Manual/dispatched runs, or an `@claude` comment on a dsh-compat issue by someone with write access.
+  # Without ANTHROPIC_API_KEY the action fails its own setup, and dsh-compat dispatches this workflow
+  # on every red week - so a missing secret used to show up as a second red run (four in a row)
+  # that said nothing about why. Say it once, here, and skip the fixer.
+  key:
     if: >
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'issue_comment' &&
        contains(github.event.comment.body, '@claude') &&
        contains(github.event.issue.labels.*.name, 'dsh-compat') &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.key.outputs.present }}
+    steps:
+      - id: key
+        env:
+          K: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$K" ]; then echo present=true >> "$GITHUB_OUTPUT"
+          else
+            echo present=false >> "$GITHUB_OUTPUT"
+            echo "::warning::ANTHROPIC_API_KEY is not set, so no fix PR is attempted. Add it under Settings > Secrets and variables > Actions; the dsh-compat issue still has the failure and the reproduction command."
+          fi
+
+  fix:
+    needs: key
+    if: needs.key.outputs.present == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
