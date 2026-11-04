@@ -1,4 +1,5 @@
-# The DeepSeek Harness release these plugins are developed and verified against.
+# The DeepSeek Harness release the DEV dependencies are pinned to (typecheck + lockfile need a concrete
+# version). Nothing a user or an example runs uses it: they all run npm's `@latest`.
 # `node scripts/bump-dsh.mjs [version]` re-pins everything below (and the package.json /
 # pnpm-workspace.yaml pins) in one go; .github/workflows/dsh-compat.yml runs it weekly against npm's
 # latest. Bump only together with a green compat run.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs one generated Magma campaign headless: DSH (the version pinned in HARNESS_COMMIT) boots the
+# Runs one generated Magma campaign headless: DSH (the newest on npm) boots the
 # profile pbfuzz was installed into, in the target's source tree, and the plugin picks up
 # "/pbfuzz run <yaml>" and drives PIER unattended until SUCCESS or STOPPED.
 #
@@ -20,7 +20,6 @@ PBFUZZ_ROOT="$(cd "$HERE/../.." && pwd)"
 CAMPAIGN="${1:?usage: run-campaign.sh <campaign.yaml>}"
 CAMPAIGN="$(cd "$(dirname "$CAMPAIGN")" && pwd)/$(basename "$CAMPAIGN")"
 PROFILE="${PROFILE:-headless}"
-DSH_VERSION="$(sed -n 's/^DSH_VERSION=//p' "$PBFUZZ_ROOT/HARNESS_COMMIT")"
 PY="${PBFUZZ_PYTHON:-$PBFUZZ_ROOT/engine/.venv/bin/python}"
 
 [ -n "${DEEPSEEK_API_KEY:-}" ] || {
@@ -46,9 +45,9 @@ if [ -n "${MAGMA_ROOT:-}" ]; then
   fi
 fi
 
-echo "==> dsh@$DSH_VERSION --profile $PROFILE in $REPO"
+echo "==> dsh@latest --profile $PROFILE in $REPO"
 status=0
-(cd "$REPO" && npx --yes "@deepseek-ai/dsh@$DSH_VERSION" --profile "$PROFILE" "/pbfuzz run $CAMPAIGN") || status=$?
+(cd "$REPO" && npx --yes "@deepseek-ai/dsh@latest" --profile "$PROFILE" "/pbfuzz run $CAMPAIGN") || status=$?
 
 echo
 echo "==> $OUTDIR/state/state.json"

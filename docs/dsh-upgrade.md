@@ -93,8 +93,8 @@ test-side one (see below). Re-pinned with `node scripts/bump-dsh.mjs 0.2.1-rc.5`
 - `pnpm -r typecheck` (forced), `pnpm -r test` (pbfuzz 364, kanalyzer 210), `check:clients`, `codegen:check`: pass.
 - `pnpm run test:dsh` (the real DSH 0.2.1-rc.5 booted in-process, both plugins installed as a user installs them,
   a whole PIER round driven through it): 18 pass.
-- `pnpm run test:engine`: 243 pass; 1 fails — `test_corpus_unreadable_seed_is_skipped_not_fatal`, which cannot hold
-  under root (`chmod 000` does not deny root) and predates this work.
+- `pnpm run test:engine`: 243 pass. (`test_corpus_unreadable_seed_is_skipped_not_fatal` was removed: it can never pass
+  as root, because `chmod 000` does not deny root, and CI/sandboxes run as root.)
 - Headless, real model (`examples/readelf-c/run.sh`, fresh profile from the final `install.sh`, clean workspace):
   `SUCCESS` in PIER round 1, ~71 s, PoC reproduced 3/3 by the engine and by hand (exit 134).
 - Headless, real model (`examples/magma/`, LUA001, patch hidden from disk the whole session): `SUCCESS` in

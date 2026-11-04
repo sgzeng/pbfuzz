@@ -3,7 +3,7 @@
 #
 #   scripts/compat-check.sh              # re-pin to npm's latest DSH, then check
 #   scripts/compat-check.sh 0.2.1        # re-pin to that release, then check
-#   scripts/compat-check.sh --current    # check the pins as committed (what a dev machine usually wants)
+#   scripts/compat-check.sh --current    # check the dev pins as committed (the real-DSH and web steps still use that exact version)
 #
 # Every step runs against the real DSH packages: forced typecheck (tsc -b alone skips work when only
 # the typings changed), unit tests, the in-process real-DSH tests (dsh-tests/: the real DSH booted

@@ -11,32 +11,32 @@ Ubuntu 22.04/24.04 x86-64, Node.js ≥ 22, Python ≥ 3.11
 
 **1. Set up DeepSeek Harness** — follow the
 [official docs](https://deepseek-harness.github.io/deepseek-harness/) to install DSH and configure
-your DeepSeek API key. Use the DSH version these plugins are verified against (`DSH_VERSION` in
-[`HARNESS_COMMIT`](HARNESS_COMMIT)); npm's `latest` can be outside their peer range.
+your DeepSeek API key. The commands below always use the newest DSH on npm (`@latest`); CI tests
+every change against it, so a DSH release these plugins cannot run on is caught before it is published.
 
 **2. Install pbfuzz from npm**
 
 ```sh
-npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add @pbfuzz/dsh-pbfuzz
+npx @deepseek-ai/dsh@latest plugin --profile web add @pbfuzz/dsh-pbfuzz
 ```
 
 That is all: the package ships the Python engine, its schemas and PyYAML.
-Then start DSH with `npx @deepseek-ai/dsh@0.2.1-rc.5 web`.
+Then start DSH with `npx @deepseek-ai/dsh@latest web`.
 
 Optional static analysis (C/C++ reachability; needs an LLVM 14 toolchain, see
 [`packages/dsh-kanalyzer`](packages/dsh-kanalyzer)):
 
 ```sh
-npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add @pbfuzz/dsh-kanalyzer
+npx @deepseek-ai/dsh@latest plugin --profile web add @pbfuzz/dsh-kanalyzer
 ```
 
 Manage the install with the same `plugin` command (add `--profile NAME` for a profile other than
 `web`), and restart DSH afterwards:
 
 ```sh
-npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web list                              # installed plugins and versions
-npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web add @pbfuzz/dsh-pbfuzz@0.1.14     # a specific release
-npx @deepseek-ai/dsh@0.2.1-rc.5 plugin --profile web remove @pbfuzz/dsh-pbfuzz
+npx @deepseek-ai/dsh@latest plugin --profile web list                              # installed plugins and versions
+npx @deepseek-ai/dsh@latest plugin --profile web add @pbfuzz/dsh-pbfuzz@0.1.14     # a specific release
+npx @deepseek-ai/dsh@latest plugin --profile web remove @pbfuzz/dsh-pbfuzz
 ```
 
 To move to a newer release, `add` it by exact version; `npm view @pbfuzz/dsh-pbfuzz version`
@@ -51,7 +51,7 @@ git clone <this-repo-url> pbfuzz-dsh && cd pbfuzz-dsh
 ```
 
 That builds the plugins and the Python engine and adds the local build to DSH. Restart
-`npx @deepseek-ai/dsh@0.2.1-rc.5 web` and you're done.
+`npx @deepseek-ai/dsh@latest web` and you're done.
 
 | Script | Does |
 |---|---|

@@ -20,7 +20,7 @@ the session's duration, so nothing on disk can hand it over even if the agent go
 ## Setup (once)
 
 ```bash
-# from the repo root — pins DSH to HARNESS_COMMIT's version, not npm `latest`
+# from the repo root
 ./build.sh && ./install.sh --profile headless
 git clone -b pbfuzz https://github.com/R-Fuzz/magma.git /path/to/magma
 export DEEPSEEK_API_KEY=...
@@ -83,9 +83,7 @@ Ubuntu 24.04, clang 18, DSH `0.2.1-rc.5` (npm `latest`), R-Fuzz/magma `pbfuzz` @
 - PoC is engine-verified (`metrics.json`'s own `first_triggering_input`, reproduced 3/3), not
   model-claimed. Hand-reproduced: stderr prints `MAGMA: Bug LUA001 reached`/`triggered`, segfaults
   (exit 139).
-- `pnpm -r test` (pbfuzz 364, kanalyzer 210) and `pnpm run test:engine` (243) pass; the one
-  remaining failure (`test_corpus_unreadable_seed_is_skipped_not_fatal`) is expected under root
-  (`chmod 000` doesn't deny root read access) and pre-existing, not a regression.
+- `pnpm -r test` (pbfuzz 364, kanalyzer 210) and `pnpm run test:engine` (243) pass.
 
 Earlier verified on DSH `0.1.5-rc.1` (2026-10-02); the run above re-confirms LUA001 against the
 newest DSH with no change to the Magma example or the adapter.

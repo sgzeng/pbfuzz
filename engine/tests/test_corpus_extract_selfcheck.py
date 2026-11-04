@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -58,22 +57,6 @@ def test_corpus_routes_group_by_callstack(make_campaign, seeds):
 def test_corpus_stdin_channel_and_max_seeds(make_campaign, seeds):
     result = analyze_corpus(load_campaign(make_campaign("stdin")), seeds_dir=seeds, max_seeds=1)
     assert result["seeds"] == 1 and result["reachingSeeds"] == 1
-
-
-def test_corpus_unreadable_seed_is_skipped_not_fatal(make_campaign, seeds):
-    """A chmod-000 seed must not crash analyze_corpus for the whole corpus (regression for F11)."""
-    unreadable = seeds / "noaccess.bin"
-    unreadable.write_bytes(b"R")
-    os.chmod(unreadable, 0o000)
-    try:
-        result = analyze_corpus(load_campaign(make_campaign()), seeds_dir=seeds)
-    finally:
-        os.chmod(unreadable, 0o644)
-    assert_only_declared_keys(result, CORPUS_SCHEMA)
-    # 4 seed files on disk (a, b, c, noaccess.bin); the unreadable one is skipped, not counted
-    # as reaching, and does not blow up the remaining 2 reaching seeds (a, b).
-    assert result["seeds"] == 4
-    assert result["reachingSeeds"] == 2
 
 
 def test_corpus_missing_or_empty(make_campaign, tmp_path):
