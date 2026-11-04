@@ -44,9 +44,9 @@ try:
 except ImportError:
     pass
 
-#: sys.modules priming: `worker_main()`'s `_load_function(..., extra_sys_path=...)` inserts the
-#: GENERATOR's OWN directory into `sys.path[0]` before the module -- with `_COMMON_IMPORTS_
-#: PREAMBLE` prepended to its source -- is exec'd (so sibling-helper imports the generator
+#: sys.modules priming: `_load_function` inserts the GENERATOR's OWN directory into
+#: `sys.path[0]` before the module -- with `_COMMON_IMPORTS_PREAMBLE` run in its namespace
+#: first -- is exec'd (so sibling-helper imports the generator
 #: author intends, e.g. `from helper import x`, still resolve). That means a bare `import
 #: <name>` inside the preamble resolves to a same-named file sitting next to the generator
 #: instead of the real stdlib module, for any `<name>` not ALREADY in `sys.modules` by the time
@@ -108,14 +108,19 @@ def _apply_limits(mem_mb: int, cpu_sec: int) -> list[str]:
     return unenforced
 
 
-def _load_function(module_path: str, function: str, *, extra_sys_path: str | None = None):
+def _load_function(module_path: str, function: str, *, preamble: str | None = None):
     """Import the module from its file path and return `function` from it.
 
+    The module is always loaded from `module_path` itself and compiled under that filename, so
+    `__file__`, `__spec__.origin`, tracebacks and `inspect` all name the real file -- a generator
+    that finds its own resources relative to `__file__` (`dirname(__file__)/../natives/x.so`)
+    finds them, whichever entry point loaded it.
+
     Args:
-        extra_sys_path: An additional directory to add to `sys.path` (highest priority), used
-            by the worker entry point when `module_path` is a prepared copy living in a
-            different directory than the original module — so sibling files the model's code
-            imports (`from helper import x` next to its own `generate.py`) still resolve.
+        preamble: Source executed in the module's namespace immediately before the module's own
+            source (the worker passes `_COMMON_IMPORTS_PREAMBLE`). It is compiled separately, so
+            the module's own line numbers are unchanged, a leading `from __future__ import ...`
+            stays legal, and the module's docstring is still its `__doc__`.
     """
     spec = importlib.util.spec_from_file_location("pbfuzz_sandboxed", module_path)
     if spec is None or spec.loader is None:
@@ -124,9 +129,14 @@ def _load_function(module_path: str, function: str, *, extra_sys_path: str | Non
     # Registered so dataclasses/pickle inside the module can find themselves.
     sys.modules["pbfuzz_sandboxed"] = module
     sys.path.insert(0, os.path.dirname(os.path.abspath(module_path)))
-    if extra_sys_path and extra_sys_path not in sys.path:
-        sys.path.insert(0, extra_sys_path)
-    spec.loader.exec_module(module)
+    if preamble is None:
+        spec.loader.exec_module(module)
+    else:
+        source = Path(module_path).read_text(encoding="utf-8", errors="replace")
+        # `dont_inherit`: this file's own `from __future__ import annotations` must not leak
+        # into the model's module.
+        exec(compile(preamble, "<pbfuzz preamble>", "exec", dont_inherit=True), module.__dict__)  # noqa: S102
+        exec(compile(source, module_path, "exec", dont_inherit=True), module.__dict__)  # noqa: S102
     if not hasattr(module, function):
         raise AttributeError(f"{module_path} defines no `{function}` function")
     fn = getattr(module, function)
@@ -135,19 +145,12 @@ def _load_function(module_path: str, function: str, *, extra_sys_path: str | Non
     return fn
 
 
-def _prepare_module_source(module_path: str, work_dir: str) -> str:
-    """Copy `module_path` into `work_dir` with `_COMMON_IMPORTS_PREAMBLE` prepended.
+class GeneratorReturnedNone(Exception):
+    """`generate()` returned `None`: the generator declined these parameters.
 
-    The names are injected into the module's SOURCE text before it is imported — not poked
-    into an already-imported module's namespace — so introspection inside the model's own code
-    (`dir()`, `inspect`) sees ordinary top-level imports, not magic, and the module is still
-    imported exactly once by the normal `_load_function` path.
+    Reported with its own status `kind` (`skipped`), not as an ordinary exception, so the engine
+    can skip that one input instead of treating the whole generator as broken.
     """
-    original = Path(module_path)
-    source = original.read_text(encoding="utf-8", errors="replace")
-    prepared = Path(work_dir) / f"prepared-{original.name}"
-    prepared.write_text(_COMMON_IMPORTS_PREAMBLE + "\n" + source, encoding="utf-8")
-    return str(prepared)
 
 
 def _coerce_bytes(produced: Any) -> tuple[bytes, dict[str, Any] | None]:
@@ -156,7 +159,12 @@ def _coerce_bytes(produced: Any) -> tuple[bytes, dict[str, Any] | None]:
     contracts/engine-rpc.schema.json specifies `generate(**params) -> bytes`. The CCS'26
     generators returned `(bytes, used_params)`; both are accepted, and the tuple form's
     resolved values are kept for the iteration record.
+
+    `None` is the generator's way of saying "this parameter combination is not supported": it
+    raises `GeneratorReturnedNone`, which both entry points report as status kind `skipped`.
     """
+    if produced is None:
+        raise GeneratorReturnedNone("generate() returned None for these parameters")
     if isinstance(produced, (bytes, bytearray)):
         return bytes(produced), None
     if isinstance(produced, tuple) and len(produced) == 2:
@@ -190,6 +198,9 @@ def main() -> int:
             with open(request["out_path"], "w", encoding="utf-8") as handle:
                 json.dump(value, handle, default=repr)
         status["ok"] = True
+    except GeneratorReturnedNone as exc:
+        status["error"] = str(exc)
+        status["kind"] = "skipped"
     except MemoryError:
         status["error"] = "MemoryError: the sandboxed code exceeded its memory limit"
         status["kind"] = "memory"
@@ -211,9 +222,10 @@ def worker_main() -> int:
     NDJSON, one line each way:
 
     1. Exactly one CONFIG line on stdin: `{module_path, function, mode, mem_mb, cpu_sec}`.
-       Rlimits are applied once (`_apply_limits`, same as `main()`), the module's source is
-       prepared once (`_prepare_module_source`) and imported once (`_load_function`) — never
-       per request.
+       Rlimits are applied once (`_apply_limits`, same as `main()`) and the module is imported
+       once (`_load_function`, with `_COMMON_IMPORTS_PREAMBLE` run in its namespace first) —
+       never per request. It is imported from `module_path` itself, never a copy, so its
+       `__file__` is the real file.
     2. Then, forever: one REQUEST line = `{id, kwargs}` (mode `bytes`) or `{id, args}` (mode
        `json`), answered by exactly one RESPONSE line = `{id, ok, out_path, used_params?,
        unenforced_limits}` on success, or `{id, ok: false, error, kind, traceback}` on an
@@ -240,8 +252,18 @@ def worker_main() -> int:
     function = config.get("function", "generate")
 
     with tempfile.TemporaryDirectory(prefix="pbfuzz-worker-") as work_dir:
-        prepared_path = _prepare_module_source(config["module_path"], work_dir)
-        fn = _load_function(function=function, module_path=prepared_path, extra_sys_path=str(Path(config["module_path"]).resolve().parent))
+        # An import-time failure (a SyntaxError, a missing module, no `generate`) is an ordinary
+        # model mistake, not a crash: it is reported against every request, the way `main()`
+        # reports it for each one-shot call, instead of ending the process -- which the parent
+        # would diagnose as "worker died" and answer with a fresh worker start per item.
+        load_error: dict[str, Any] | None = None
+        fn: Any = None
+        try:
+            fn = _load_function(config["module_path"], function, preamble=_COMMON_IMPORTS_PREAMBLE)
+        except MemoryError:
+            load_error = {"error": "MemoryError: the sandboxed code exceeded its memory limit", "kind": "memory"}
+        except BaseException as exc:  # noqa: BLE001 - model code may raise or exit arbitrarily
+            load_error = {"error": f"{type(exc).__name__}: {exc}", "kind": "exception", "traceback": traceback.format_exc(limit=12)}
 
         while True:
             request_line = sys.stdin.readline()
@@ -256,6 +278,10 @@ def worker_main() -> int:
             req_id = request.get("id")
             out_path = os.path.join(work_dir, f"out-{req_id}")
             response: dict[str, Any] = {"id": req_id, "unenforced_limits": unenforced_limits}
+            if load_error is not None:
+                response.update(load_error, ok=False)
+                os.write(1, (json.dumps(response, default=str) + "\n").encode("utf-8", errors="replace"))
+                continue
             try:
                 if mode == "bytes":
                     data, used = _coerce_bytes(fn(**request.get("kwargs", {})))
@@ -269,6 +295,10 @@ def worker_main() -> int:
                         json.dump(value, handle, default=repr)
                 response["ok"] = True
                 response["out_path"] = out_path
+            except GeneratorReturnedNone as exc:
+                response["ok"] = False
+                response["error"] = str(exc)
+                response["kind"] = "skipped"
             except MemoryError:
                 response["ok"] = False
                 response["error"] = "MemoryError: the sandboxed code exceeded its memory limit"

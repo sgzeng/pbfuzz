@@ -34,6 +34,8 @@ export interface ValidationSample {
   preview?: string
   error?: string
   diagnosis?: string
+  /** `generate()` returned None: it declined these parameters. Not an error by itself. */
+  skipped?: string
   reach?: PreflightReach
 }
 
@@ -93,6 +95,15 @@ function generatorLines(samples: ValidationSample[]): string[] {
   })
 }
 
+/**
+ * Entries the generator declined by returning None. Only shown when something else rejected the
+ * call (or every entry was declined, which `generator.validate` reports in `issues`): they are the
+ * likeliest explanation of a "stage 1 tests nothing" issue, and otherwise harmless.
+ */
+function skippedLines(samples: ValidationSample[]): string[] {
+  return samples.filter(s => s.skipped !== undefined).map(s => `  - ${s.source} ${compact(s.params)}: generate() returned None`)
+}
+
 /** What one preflighted entry actually fed the target, and what the target did with it. */
 function preflightLine(s: ValidationSample): string {
   const r = s.reach!
@@ -137,6 +148,8 @@ export function fuzzRejection(input: FuzzRejectionInput): string | undefined {
 
   if (sections.length === 0 && input.validation?.ok !== false) return undefined
   if (sections.length === 0) sections.push('generator:\n  - validation failed without a reported cause')
+  const skipped = skippedLines(samples)
+  if (skipped.length > 0) sections.push(`declined by the generator:\n${skipped.join('\n')}`)
   return [
     'pbfuzz_fuzz: nothing was started. Every problem found in this call:',
     '',

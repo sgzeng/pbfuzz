@@ -281,3 +281,31 @@ def test_unparseable_and_missing_plan(tmp_path):
         with pytest.raises(EngineError) as info:
             load_plan(path)
         assert info.value.code == PLAN_INVALID
+
+
+def test_none_skips_that_input_and_the_session_carries_on(make_campaign, write_plan, write_generator):
+    gen = write_generator("def generate(**p):\n    return None if p['n'] == 2 else b'R'\n")
+    plan = {"parameter_space": {"n": {"type": "int_range", "min": 0, "max": 9}},
+            "next_batch_plan": [{"plan_description": "a", "n": 1}, {"plan_description": "unsupported", "n": 2},
+                                {"plan_description": "b", "n": 3}]}
+    session, _, campaign = _session(make_campaign, write_plan, write_generator, plan, gen=gen, runtime={"maxIters": 3})
+    result = session.run()
+    assert_only_declared_keys(result, RESULT_SCHEMA)
+    s = result["summary"]
+    assert s["stoppedBy"] == "completed" and s["errorCount"] == 0
+    assert s["totalIterations"] == 2 and s["skippedCount"] == 1 and s["reachedCount"] == 2
+    records = _records(result)
+    assert [r["type"] for r in records] == ["iter_result", "skipped", "iter_result"]
+    assert records[1]["parameters"]["n"] == 2 and "returned None" in records[1]["message"]
+    assert MetricsStore(campaign.state_dir).read()["total_iterations"] == 2
+
+
+def test_a_generator_that_returns_none_for_everything_fails_with_the_cause(make_campaign, write_plan, write_generator):
+    gen = write_generator("def generate(**p):\n    return None\n")
+    session, _, campaign = _session(make_campaign, write_plan, write_generator, {"parameter_space": PAYLOAD_SPACE}, gen=gen)
+    with pytest.raises(EngineError) as info:
+        session.run()
+    assert info.value.code == GENERATOR_FAILED
+    assert "returned None for all 8 inputs" in info.value.message and "__file__" in info.value.diagnosis
+    assert_error_shape(info.value)
+    assert MetricsStore(campaign.state_dir).read()["last_session"]["stopped_by"] == "error"

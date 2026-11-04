@@ -778,7 +778,7 @@ export function registerTools(ctx: Context, host: PbfuzzHost): void {
     description: 'Run one fuzz session: validates the plan and the generator (including a real target preflight), then runs stage 1 traced and stage 2 sampling, writes metrics.json and moves the campaign to REFLECT. Returns a background job id unless headless or execution.fuzzBackground is off; a completed job wakes you on its own, so end your turn rather than waiting on job_output. A kill still lands in REFLECT (partial results are worth reflecting on); an engine failure leaves the campaign in EXECUTE, retryable.',
     parameters: {
       plan: { ...FUZZ_PLAN_SCHEMA, required: true },
-      generator_code: { type: 'string', description: 'Python source exposing `generate(**params) -> bytes`. The engine also passes `seed` when `generate` accepts it. Give this or generator_path.' },
+      generator_code: { type: 'string', description: 'Python source exposing `generate(**params) -> bytes`. The engine also passes `seed` when `generate` accepts it; returning None skips that one combination. Give this or generator_path.' },
       generator_path: { type: 'string', description: 'A generator already saved by an earlier pbfuzz_fuzz call (named in its rejection), after fixing it with `edit`. Give this or generator_code.' },
       runtime: FUZZ_RUNTIME_OVERRIDE_SCHEMA,
     },

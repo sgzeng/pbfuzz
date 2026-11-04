@@ -26,7 +26,8 @@ interface BreakpointRecord {
 
 /** One `iterations.jsonl` line (`fuzzer.py` `_record`/`_run_one`), as far as this module reads it. */
 export interface IterationRecord {
-  type?: 'iter_result' | 'error'
+  /** `skipped`: `generate()` returned None for these parameters, so no input ran. */
+  type?: 'iter_result' | 'error' | 'skipped'
   iter?: number
   stage?: number
   parameters?: Record<string, unknown>
@@ -37,7 +38,7 @@ export interface IterationRecord {
   size?: number
   signal?: string
   trace?: { breakpoints?: BreakpointRecord[] }
-  /** `type: 'error'` records. */
+  /** `type: 'error'` records (`message` also on `type: 'skipped'`). */
   phase?: string
   message?: string
   diagnosis?: string
@@ -77,7 +78,7 @@ export function latestIterationsPath(campaignDir: string): string | undefined {
 
 /** The first iteration that triggered, which is the one the engine keeps as the PoC. */
 export function triggeringIteration(records: IterationRecord[]): IterationRecord | undefined {
-  return records.find(r => r.type !== 'error' && (r.triggered ?? 0) > 0)
+  return records.find(r => r.type !== 'error' && r.type !== 'skipped' && (r.triggered ?? 0) > 0)
 }
 
 /**
@@ -128,7 +129,7 @@ export interface RunDigestInput {
 export function runDigest(input: RunDigestInput): string {
   const s = input.metrics?.last_session
   const lines: string[] = []
-  const stages = [1, 2].map(n => input.iterations.filter(r => r.type !== 'error' && r.stage === n).length)
+  const stages = [1, 2].map(n => input.iterations.filter(r => r.type !== 'error' && r.type !== 'skipped' && r.stage === n).length)
   lines.push(`this round: ${s?.iterations ?? 0} iterations (stage 1: ${stages[0]}, stage 2: ${stages[1]}), ${s?.reached ?? 0} reached, ${s?.triggered ?? 0} triggered, ${s?.timeouts ?? 0} timeouts, ${s?.errors ?? 0} errors, ${s?.elapsed_sec ?? '?'} s, stopped by ${s?.stopped_by ?? '?'}`)
 
   const trigger = triggeringIteration(input.iterations)
@@ -145,6 +146,11 @@ export function runDigest(input: RunDigestInput): string {
   }
   const breakpoints = breakpointSummary(input.iterations)
   if (breakpoints !== undefined) lines.push(breakpoints)
+  const skipped = input.iterations.filter(r => r.type === 'skipped')
+  if (skipped.length > 0) {
+    const first = JSON.stringify(skipped[0]!.parameters ?? {})
+    lines.push(`${skipped.length} input(s) skipped: generate() returned None (an unsupported combination); first params ${first.length > MAX_PARAMS ? `${first.slice(0, MAX_PARAMS)}…` : first}`)
+  }
   const errors = input.iterations.filter(r => r.type === 'error')
   if (errors.length > 0) {
     const first = errors[0]!

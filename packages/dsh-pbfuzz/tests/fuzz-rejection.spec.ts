@@ -28,6 +28,18 @@ describe('fuzzRejection', () => {
     expect(text).toContain('next_batch_plan[0], next_batch_plan[1], next_batch_plan[2], next_batch_plan[3] (4 entries, same failure)')
   })
 
+  it('does not reject over entries the generator declined (returned None), but lists them when something else does', () => {
+    const declined = { source: 'next_batch_plan[1]', params: { n: 2 }, skipped: 'generator returned None for these parameters' }
+    expect(fuzzRejection({ planIssues: [], validation: { ok: true, samples: [{ source: 'next_batch_plan[0]', size: 4 }, declined] }, generatorPath: '/g.py' })).toBeUndefined()
+    const text = fuzzRejection({
+      planIssues: [],
+      validation: { ok: false, issues: ['generate() returned None for all 1 next_batch_plan entries, so stage 1 would test nothing.'], samples: [declined] },
+      generatorPath: '/g.py',
+    })!
+    expect(text).toContain('stage 1 would test nothing')
+    expect(text).toContain('declined by the generator:\n  - next_batch_plan[1] {"n":2}: generate() returned None')
+  })
+
   it('names every layer in one message: the plan, the signature, the engine error', () => {
     const text = fuzzRejection({
       planIssues: [{ path: 'next_batch_plan[6].entry_point', message: 'must be one of [4194304], got 4096' }],

@@ -100,7 +100,9 @@ Tools here: `pbfuzz_callgraph` (callers/callees, the function at a line, critica
 
 **IMPLEMENT → EXECUTE → REFLECT** is one `pbfuzz_fuzz` call. Send the generator source inline as
 `generator_code`; do not write it to a file first. `generate(**params) -> bytes` receives every
-plan parameter, plus `seed` if its signature takes one. A rejection lists every problem at once and
+plan parameter, plus `seed` if its signature takes one. Returning `None` skips one unsupported
+combination; anything that is really missing (a file or `.so` found from `__file__`, which is the
+generator's real path) should raise instead, so the error names it. A rejection lists every problem at once and
 says where the source was saved: fix that file with `edit` and resubmit with `generator_path` —
 never resend the code. The plan needs:
 

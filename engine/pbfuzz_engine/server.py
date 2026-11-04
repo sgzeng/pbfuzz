@@ -185,7 +185,7 @@ class EngineService:
     def generator_validate(self, params: dict[str, Any], ctx: RequestContext) -> dict[str, Any]:
         """`generator.validate {generatorPath, plan? | planPath? | parameterSpace?, samples?=3,
         timeoutSec?, campaignPath?, execTimeoutSec?}`
-        → `{ok, issues, samples: [{source, params, size?, preview?, error?, diagnosis?, reach?}], unenforcedLimits}`.
+        → `{ok, issues, samples: [{source, params, size?, preview?, error?, diagnosis?, skipped?, reach?}], unenforcedLimits}`.
 
         Reports EVERYTHING it can find in one call rather than stopping at the first class of
         problem: each rejection costs the caller a full resubmission of the generator, and a
@@ -216,6 +216,11 @@ class EngineService:
         exists to catch a plan that cannot reach the target at all, which two entries answer as
         well as nine, and on a target whose bug aborts, every preflighted entry that triggers
         pays the crash-handler tax (~2.5s here) on the caller's foreground path.
+
+        A call where `generate` returned None is the generator declining that parameter
+        combination, not a failure: its sample carries `skipped` (the reason) instead of `error`,
+        and it does not by itself make `ok` false. Only a generator that declines EVERY call, or
+        every `next_batch_plan` entry (stage 1 would then test nothing), is reported in `issues`.
 
         `ok` is false when a generator call fails, when running the target fails outright (e.g.
         the binary is not built), or when none of the preflighted entries reach the target.
@@ -262,8 +267,15 @@ class EngineService:
         results, unenforced, ok = [], set(), not issues
         preflighted = 0
         any_reached = False
+        skipped_batch = skipped_all = 0
         for (source, p, from_batch_plan), out in zip(cases, generated):
             entry: dict[str, Any] = {"source": source, "params": p}
+            if isinstance(out, SandboxError) and out.kind == "skipped":
+                skipped_all += 1
+                skipped_batch += from_batch_plan
+                entry["skipped"] = out.message
+                results.append(entry)
+                continue
             if isinstance(out, SandboxError):
                 ok = False
                 entry.update({"error": out.message, "diagnosis": out.diagnosis})
@@ -281,6 +293,15 @@ class EngineService:
             results.append(entry)
         if preflighted and not any_reached:
             ok = False
+        why_none = ("The generator returned None, which the engine reads as \"unsupported combination\". If that "
+                    "was not intended, a lookup inside it probably failed (a file or library located relative to "
+                    "`__file__`, a ctypes symbol, an optional import): raise there instead of returning None.")
+        if cases and skipped_all == len(cases):
+            ok = False
+            issues.append(f"generate() returned None for all {len(cases)} calls, so it produced no input at all. {why_none}")
+        elif (n_batch := sum(1 for c in cases if c[2])) and skipped_batch == n_batch:
+            ok = False
+            issues.append(f"generate() returned None for all {n_batch} next_batch_plan entries, so stage 1 would test nothing. {why_none}")
         return {"ok": ok, "issues": issues, "samples": results, "unenforcedLimits": sorted(unenforced), "preflighted": preflighted}
 
     @staticmethod

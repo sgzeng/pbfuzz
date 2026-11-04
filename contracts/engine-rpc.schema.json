@@ -118,6 +118,7 @@
             "triggeredCount": { "type": "integer", "minimum": 0 },
             "timeoutCount": { "type": "integer", "minimum": 0 },
             "errorCount": { "type": "integer", "minimum": 0 },
+            "skippedCount": { "type": "integer", "minimum": 0, "description": "Inputs the generator declined by returning None (an unsupported parameter combination). Set only when non-zero; not counted in totalIterations, since no input ran." },
             "elapsedSec": { "type": "number", "minimum": 0 },
             "stoppedBy": { "type": "string", "enum": ["completed", "timeout", "trigger", "error", "cancelled"] },
             "errorPhase": { "type": "string", "description": "Set alongside errorMessage/errorDiagnosis when stoppedBy is \"error\": which phase failed (e.g. `generator_<kind>`)." },

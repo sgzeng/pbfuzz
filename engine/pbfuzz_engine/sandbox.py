@@ -37,7 +37,11 @@ _ENGINE_ROOT = str(Path(__file__).resolve().parent.parent)
 
 
 class SandboxError(EngineError):
-    """A sandboxed call failed. `kind` is one of: timeout, exception, memory, crash, protocol."""
+    """A sandboxed call failed. `kind` is one of: timeout, exception, memory, crash, protocol, skipped.
+
+    `skipped` is not a failure of the generator: it returned None, its way of declining one
+    parameter combination. Callers skip that one input rather than stopping on it.
+    """
 
     def __init__(self, kind: str, message: str, *, diagnosis: str, remedies: list[dict[str, Any]], traceback: str = "") -> None:
         super().__init__(GENERATOR_FAILED, message, diagnosis=diagnosis, remedies=remedies)
@@ -87,6 +91,21 @@ def _error_for_failed_status(status: dict[str, Any], *, what: str, function: str
     kind = status.get("kind", "exception")
     message = status.get("error", "unknown error")
     tb = status.get("traceback", "")
+    if kind == "skipped":
+        return SandboxError(
+            "skipped", f"{what} returned None for these parameters (skipped as an unsupported combination)",
+            diagnosis=(
+                f"`{function}` in {module_path} returned None instead of bytes. The engine treats None as "
+                "\"this parameter combination is not supported\" and skips that one input. If None was not "
+                "intended, the usual cause is a lookup in the generator that failed and fell back to "
+                "`return None`: a file or shared library located relative to `__file__`, a ctypes symbol, "
+                "an optional import. Raise an exception there instead, so the message says what is missing."
+            ),
+            remedies=[
+                remedy("fix_code", f"Raise instead of returning None in the {what}", detail="An exception's traceback names the missing resource; None does not.", effect="manual"),
+                remedy("narrow_space", "Leave unsupported combinations out of the parameter space", effect="manual"),
+            ],
+        )
     if kind == "memory":
         return SandboxError(
             "memory", f"{what} exceeded its {mem_mb} MB memory limit",

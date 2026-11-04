@@ -115,6 +115,9 @@ class _Tally:
     triggered: int = 0
     timeouts: int = 0
     errors: int = 0
+    #: Inputs the generator declined (`generate()` returned None). Not iterations: no input ran.
+    skipped: int = 0
+    first_skip: SandboxError | None = None
     first_trigger: str | None = None
     reaching: list[tuple[int, str]] = field(default_factory=list)
 
@@ -228,10 +231,19 @@ class FuzzSession:
         unchanged from when it called `self.sandbox.generate(params)` itself.
         """
         t = self._tally
-        t.iterations += 1
         record: dict[str, Any] = {"iter": iteration, "stage": stage, "parameters": params}
         if description:
             record["plan_description"] = description
+        if isinstance(generated, SandboxError) and generated.kind == "skipped":
+            # The generator declined this combination. Recorded so the log shows which ones,
+            # but not an iteration and not an error: the session carries on with the next.
+            t.skipped += 1
+            t.first_skip = t.first_skip or generated
+            record.update({"type": "skipped", "message": generated.message})
+            self._record(record, handle)
+            self.notify("iteration", {k: record[k] for k in ("iter", "stage", "type", "message")})
+            return record
+        t.iterations += 1
         if isinstance(generated, SandboxError):
             exc = generated
             t.errors += 1
@@ -426,6 +438,10 @@ class FuzzSession:
                                 break
                     if stage == 1 and not cancelled and stopped_by == "completed":
                         self._progress(1, iteration, started, force=True)
+            if not cancelled and fatal is None and self._tally.iterations == 0 and self._tally.first_skip is not None:
+                # The generator declined every input it was asked for: nothing ran, so this is
+                # not a completed run. Decided here, before `finally`, so metrics say "error".
+                stopped_by, fatal = "error", self._tally.first_skip
         except EngineError as exc:
             stopped_by, fatal = "error", exc
         finally:
@@ -453,6 +469,11 @@ class FuzzSession:
                 remedies=[remedy("rerun", "Run fuzz.run again", effect="retry")],
             )
         if fatal is not None:
+            if isinstance(fatal, SandboxError) and fatal.kind == "skipped":
+                raise EngineError(
+                    GENERATOR_FAILED, f"generator returned None for all {t.skipped} inputs; nothing ran",
+                    diagnosis=fatal.diagnosis, remedies=fatal.remedies,
+                )
             if isinstance(fatal, SandboxError):
                 raise EngineError(
                     GENERATOR_FAILED, f"generator failed before any input ran: {fatal.message}",
@@ -464,6 +485,8 @@ class FuzzSession:
             "totalIterations": t.iterations, "reachedCount": t.reached, "triggeredCount": t.triggered,
             "timeoutCount": t.timeouts, "errorCount": t.errors, "elapsedSec": round(elapsed, 3), "stoppedBy": stopped_by,
         }
+        if t.skipped:
+            summary["skippedCount"] = t.skipped
         if stopped_by == "error" and last_error is not None:
             # Only reachable here for the non-fatal case (see `fatal` handling above): a caller
             # that only inspects the RPC result now sees why the run stopped early, without

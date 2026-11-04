@@ -18,6 +18,7 @@ describe('run digest', () => {
       iterations: [
         { type: 'iter_result', stage: 1, reached: 1, triggered: 0, trace: { breakpoints: [{ location: 'a.c:3', hitTimes: 2, resolved: true }, { location: 'a.c:9', resolved: false }] } },
         { type: 'iter_result', stage: 2, reached: 0, triggered: 0 },
+        { type: 'skipped', stage: 2, parameters: { n: 2 }, message: 'generator returned None for these parameters' },
         { type: 'error', phase: 'generate', message: 'boom', diagnosis: 'bad kwarg' },
       ],
       iterationsPath: '/r/runs/session-0001/iterations.jsonl',
@@ -27,6 +28,7 @@ describe('run digest', () => {
     expect(text).toContain('breakpoints hit: a.c:3 ×2')
     expect(text).toMatch(/never bound .*a\.c:9/)
     expect(text).toContain('1 engine error(s); first: generate: boom — bad kwarg')
+    expect(text).toContain('1 input(s) skipped: generate() returned None (an unsupported combination); first params {"n":2}')
     expect(text).not.toContain('"success"')
   })
 

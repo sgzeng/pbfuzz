@@ -74,3 +74,37 @@ def test_a_generator_that_takes_seed_still_gets_it(write_generator):
     }, _ctx())
     assert result["ok"] is True, result
     assert all(s["params"].get("seed") is not None for s in result["samples"])
+
+
+def test_none_for_some_entries_is_reported_as_skipped_not_a_rejection(make_campaign, write_generator):
+    gen = write_generator("def generate(n=1):\n    return None if n == 2 else b'R' * n\n")
+    result = EngineService().generator_validate({
+        "generatorPath": str(gen),
+        "plan": {"parameter_space": SPACE, "next_batch_plan": [
+            {"plan_description": "supported", "n": 1},
+            {"plan_description": "unsupported", "n": 2},
+        ]},
+        "campaignPath": str(make_campaign()),
+        "samples": 3,
+    }, _ctx())
+    assert result["ok"] is True, result
+    assert result["issues"] == []
+    by_source = {s["source"]: s for s in result["samples"]}
+    assert "error" not in by_source["next_batch_plan[1]"]
+    assert "returned None" in by_source["next_batch_plan[1]"]["skipped"]
+    assert by_source["next_batch_plan[0]"]["reach"]["reached"] is True
+
+
+def test_none_for_every_batch_entry_is_one_issue_that_names_the_likely_cause(write_generator):
+    gen = write_generator("def generate(n=1):\n    return None if n < 3 else b'x'\n")
+    result = EngineService().generator_validate({
+        "generatorPath": str(gen),
+        "plan": {"parameter_space": SPACE, "next_batch_plan": [
+            {"plan_description": "a", "n": 1}, {"plan_description": "b", "n": 2},
+        ]},
+        "samples": 0,
+    }, _ctx())
+    assert result["ok"] is False
+    (issue,) = result["issues"]
+    assert "returned None for all 2 calls" in issue and "__file__" in issue
+    assert all("error" not in s and "skipped" in s for s in result["samples"])
