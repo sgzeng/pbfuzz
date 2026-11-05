@@ -1079,7 +1079,7 @@ export function registerTools(ctx: Context, host: PbfuzzHost): void {
 
   tools.register(defineTool({
     name: 'pbfuzz_deviation',
-    description: 'Find where an execution left the path toward the target: the first critical branch taken the wrong way (static analysis on), or how far it got (target_only).',
+    description: 'Find where an execution left the path toward the target: the first critical branch taken the wrong way (static analysis on), or how far it got (target_only). The result\'s `static_analysis` field says whether static analysis was used; `unavailable` means it failed and the run degraded to target_only, with the reason.',
     parameters: {
       input: { type: 'string', required: true },
       extra_bp: { type: 'json', description: 'Optional extra breakpoints to trace.' },
@@ -1087,10 +1087,11 @@ export function registerTools(ctx: Context, host: PbfuzzHost): void {
     output: jsonTool,
     async execute(args, exec) {
       const active = activeOrThrow(exec)
-      // Deviation degrades to target_only without static analysis, so a provider that cannot be
-      // prepared is reported as no critical locations rather than failing the whole call.
-      const critical = await preparedProvider(active).then(async p => await p.criticalLocations()).catch(() => [])
-      return withDashboard(await engineCall('deviation.run', {
+      // Deviation still runs (as target_only) when static analysis cannot be prepared, but the
+      // reason is never swallowed: it comes back in `static_analysis` so the agent can act on it.
+      const staticWanted = host.settings().tools.staticAnalysis !== 'off' && active.campaign.analysis?.static?.enabled !== false
+      const { critical, note } = await resolveCriticalLocations(staticWanted, async () => await (await preparedProvider(active)).criticalLocations())
+      const result = await engineCall('deviation.run', {
         campaignPath: active.path,
         input: host.resolvePath(agentOf(exec), args.input),
         // DeviationRunParams: without criticalLocations the engine degrades to target_only itself.
@@ -1098,9 +1099,54 @@ export function registerTools(ctx: Context, host: PbfuzzHost): void {
         ...tracerParam(active.campaign.tracer ?? host.settings().tools.tracer),
         ...args.extra_bp !== undefined ? { extraBreakpoints: args.extra_bp } : {},
         debuggerPaths: debuggerPaths(host.settings()),
-      }, exec), exec)
+      }, exec)
+      return withDashboard(withStaticAnalysisNote(result, note), exec)
     },
   }))
+}
+
+/** What `pbfuzz_deviation` reports about its static-analysis input, so a degraded run is visible. */
+export interface StaticAnalysisNote {
+  /** `ok`: critical branches in use. `off`: static analysis is not wanted, target_only is expected.
+   * `unavailable`: wanted but failed, so the run degraded to target_only. `no_critical_locations`:
+   * prepared fine but returned none. */
+  status: 'ok' | 'off' | 'unavailable' | 'no_critical_locations'
+  /** Why static analysis was unavailable (the provider's own diagnosis, with remedies). */
+  reason?: string
+  /** Number of critical locations handed to the engine. */
+  critical_locations?: number
+}
+
+/**
+ * Fetch the critical locations `pbfuzz_deviation` needs, without hiding why they are missing.
+ * @param wanted - whether static analysis is enabled for this campaign.
+ * @param fetch - prepares the provider and returns its critical locations (may throw).
+ * @returns the locations (empty on failure or when not wanted) and a note saying which case it was.
+ */
+export async function resolveCriticalLocations<T>(
+  wanted: boolean,
+  fetch: () => Promise<T[]>,
+): Promise<{ critical: T[]; note: StaticAnalysisNote }> {
+  if (!wanted) return { critical: [], note: { status: 'off' } }
+  try {
+    const critical = await fetch()
+    return critical.length > 0
+      ? { critical, note: { status: 'ok', critical_locations: critical.length } }
+      : { critical, note: { status: 'no_critical_locations', critical_locations: 0 } }
+  } catch (error) {
+    return { critical: [], note: { status: 'unavailable', reason: error instanceof Error ? error.message : String(error) } }
+  }
+}
+
+/**
+ * Attach the static-analysis note to the engine's deviation result.
+ * @param result - the `deviation.run` result.
+ * @param note - from {@link resolveCriticalLocations}.
+ * @returns the result with a `static_analysis` field (wrapped when the result is not an object).
+ */
+export function withStaticAnalysisNote(result: unknown, note: StaticAnalysisNote): Record<string, unknown> {
+  const base = typeof result === 'object' && result !== null && !Array.isArray(result) ? result as Record<string, unknown> : { result }
+  return { ...base, static_analysis: note }
 }
 
 /**

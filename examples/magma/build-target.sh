@@ -72,6 +72,9 @@ export CC="${CC:-clang}" CXX="${CXX:-clang++}" AR="${AR:-ar}" RANLIB="${RANLIB:-
 BUILD_FLAGS="-include $MAGMA/src/canary.h -DMAGMA_ENABLE_CANARIES -g -O0"
 export CFLAGS="$BUILD_FLAGS" CXXFLAGS="$BUILD_FLAGS"
 export LIBS="-l:magma.a -lrt" LDFLAGS="-L$OUT -g"
+# poppler: Magma builds freetype from source, and with libbz2-dev on the host (absent in Magma's
+# Docker image) it enables bzip2 support, so the static libfreetype.a needs -lbz2 at link time.
+[ "$TARGET_NAME" = poppler ] && export LIBS="$LIBS -lbz2"
 
 echo "==> build magma.a and $TARGET_NAME ($CC)"
 bash "$MAGMA/build.sh"
