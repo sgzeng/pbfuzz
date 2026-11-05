@@ -121,7 +121,7 @@ straight to REFLECT; do not call `job_output` or read the run files.
 
 **REFLECT** — read-only analysis. Compare `last_reached_count` against previous rounds. For inputs
 that did not reach, `pbfuzz_deviation` names where execution left the path and which precondition
-was violated. For reach-but-no-trigger, `pbfuzz_trace` reads the variables at the target; put the
+was violated. Check the result's `static_analysis` field: `unavailable` means the analyzer failed and this is only the weaker target_only answer, so diagnose it as in "When a step fails". For reach-but-no-trigger, `pbfuzz_trace` reads the variables at the target; put the
 bug condition itself in `inline_expr`, so you learn both that it was false and what its operands
 were. A breakpoint that comes back `resolved: false` was never bound — usually a build without
 `-g` or a line with no instruction — so fix that before believing `hitTimes: 0`. If an `inline_expr`
